@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,7 +39,7 @@ const SLAVE = "COM2"
 //TIMEOUT время ожидания
 const TIMEOUT = 3 * time.Second
 
-const connInit = "ConnInit"
+const connInit = "ConnI"
 
 //ACC сообщение подтверждения
 const ACC = "A"
@@ -113,18 +114,19 @@ func readMes(s *serial.Port, res chan string) {
 func sendMes(port *serial.Port, text string) chan int {
 	res := make(chan int, 1)
 	go func() {
-		n, err := port.Write([]byte(text))
+		_, err := port.Write([]byte(text))
 		//fmt.Println("Sending...")
 
 		if err != nil {
+			res <- FAILED
 			fmt.Println("Couldn't send!")
 		}
-		res <- n
+		res <- OK
 	}()
 	return res
 }
-func RSTDetector(port *conn, d *int, data string) string {
-	in := make(chan string, 2)
+func RSTDetector(port *conn, d *int, data string) (string, int) {
+	in := make(chan string, 1)
 	readMes(port.Port, in)
 	for {
 		if *d > 4 {
@@ -133,7 +135,7 @@ func RSTDetector(port *conn, d *int, data string) string {
 			//val := <-readMes(port.Port)
 			//fmt.Println("OOOOOPS! " + val)
 			port.ConnStatus = 2
-			return ""
+			return "-1", FAILED
 		}
 		_ = <-sendMes(port.Port, data)
 		//fmt.Println("-> " + data)
@@ -141,101 +143,253 @@ func RSTDetector(port *conn, d *int, data string) string {
 		//fmt.Println("DB\t selecting")
 		select {
 		case <-timer.C:
-			fmt.Println("!!!\t timeout happend")
+			fmt.Println("FAIL!\t timeout happend")
 			timer.Stop()
 			(*d)++
 		case val := <-in:
 			if !timer.Stop() {
 				<-timer.C
 			}
+			//fmt.Println("Sending")
 			//fmt.Println("DB\t RST out")
 			//fmt.Println("RST out")
-			return val
+			return val, OK
 		}
 	}
 }
-func SyncSend(port *conn, data string) (status int) {
+func SyncSend(port *conn, data string, answer bool) (status int) {
 	//if port.ConnStatus == OK {
 	var d = 0
-	val := RSTDetector(port, &d, data)
+	var val string
+	if answer {
+		val, status = RSTDetector(port, &d, data)
+	} else {
+		status = <-sendMes(port.Port, data)
+	}
 	if val == ACC {
 		//fmt.Println("<- " + val)
 		//повторная отправка
 	} else {
 	}
 	//fmt.Println("SyncSend Passed")
-	return OK
+	return status
 	//}
-	return FAILED
 }
 
-func SyncRead(port *conn) (val string, status int) {
+func SyncRead(port *conn, initOnly bool) (val string, status int) {
+	//fmt.Println("ProcessInit")
 	in := make(chan string, 1)
 	readMes(port.Port, in)
 	val = <-in
 	//fmt.Println("\t<- " + val)
+	if initOnly {
+		fmt.Println(strconv.Itoa(port.ConnStatus))
+		if val != connInit {
+			fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
+			return val, NOANSWER
+		}
+	}
 	if val == ACC {
+		fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
 		return val, NOANSWER
 	}
 	sendMes(port.Port, ACC)
 	//fmt.Println("SyncRead Passed")
+	fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(OK))
 	return val, OK
 }
 
 func syncSignal(port *conn, mu *sync.Mutex) {
 	for port.ConnStatus == OK {
-		//fmt.Println("Sending")
+		//fmt.Println("syncInit")
 		mu.Lock()
-		SyncSend(port, SYNC)
+		fmt.Println("\t+ Mutex syncSignal")
+		status := SyncSend(port, SYNC, true)
 		mu.Unlock()
-		//fmt.Println("   OK, syncSignal passed")
+		fmt.Println("\t- Mutex syncSignal")
+		if status == OK {
+			//	fmt.Println("OK!\t syncSignal passed")
+		} else {
+			//	fmt.Println("FAIL!\t syncSignal failed")
+		}
 		time.Sleep(TIMEOUT)
 	}
 }
 
 /*------------------------------------------------------------------------------*/
 
-func manageHandler(command string, self *conn, mu *sync.Mutex) {
-	switch command {
-	case "ConnInit":
-		connectInitMaster(self, mu)
-		/*if self.ConnStatus == OK {
+func manageHandler(self *conn, mu *sync.Mutex) {
+	//var stopChan = make(chan struct{}, 1)
+	for command := range self.ManageStream {
+		//fmt.Println("OK!\t manager init")
+		switch command {
+		case "ConnInit":
+			status := connectInitMaster(self, mu)
+			if status == OK {
+				fmt.Println("OK!\t connection made")
+			} else if status == FAILED {
+				fmt.Println("FAIL!\t connection failed")
+			} /*if self.ConnStatus == OK {
+				go func() {
+					for self.PortStatus == OK {
+						val := <-self.Send
+						SyncSend(self, val)
+					}
+				}()
+			}*/
+		case "Open":
+			openPort(self, MASTER)
+			if self.PortStatus == OK {
+				fmt.Println("OK!\t Port MASTER opened")
+			} else {
+				fmt.Println("FAIL!\t UNABLE TO OPEN PORT MASTER!!!")
+			}
 			go func() {
-				for self.PortStatus == OK {
-					val := <-self.Send
-					SyncSend(self, val)
+				for val := range self.Receive {
+					fmt.Println("   <-" + val)
 				}
 			}()
-		}*/
-	case "Open":
-		openPort(self, MASTER)
-		if self.PortStatus == OK {
-			fmt.Println("OK!\t Port MASTER opened")
-		} else {
-			fmt.Println("FAIL!\t UNABLE TO OPEN PORT MASTER!!!")
-		}
-	case "OpenSlave": //Потом убрать, подгрузку названия проводить из конфига
-		openPort(self, SLAVE)
-		if self.PortStatus == OK {
-			fmt.Println("OK!\t Port SLAVE opened")
-		} else {
-			fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
+		case "OpenSlave": //Потом убрать, подгрузку названия проводить из конфига
+			openPort(self, SLAVE)
+			if self.PortStatus == OK {
+				fmt.Println("OK!\t Port SLAVE opened")
+			} else {
+				fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
+			}
+			connectInitSlave(self, mu)
+			/*go func() {
+				//for self.PortStatus == OK {
+			LOOP:
+				for {
+					select {
+					case <-stopChan:
+						break LOOP
+					default:
+					}
+					mu.Lock()
+					val, status := SyncRead(self, true)
+					mu.Unlock()
+					if val != ACC {
+						//	self.Receive <- val
+					}
+				}
+				//}
+			}()*/
+		/*case "rerunReader":
+		stopChan <- struct{}{}
+		go func() {
+			//for self.PortStatus == OK {
+		LOOP:
+			for {
+				select {
+				case <-stopChan:
+					break LOOP
+				default:
+				}
+				mu.Lock()
+				val, status := SyncRead(self, true)
+				mu.Unlock()
+				if val != ACC {
+					//	self.Receive <- val
+				}
+			}
+			//}
+		}()*/
+		default:
+			fmt.Println("FAIL!\t Unknown command!")
 		}
 	}
+
 }
-func connectInitMaster(self *conn, mu *sync.Mutex) {
+func connectInitMaster(self *conn, mu *sync.Mutex) int {
 	mu.Lock()
-	SyncSend(self, connInit)
-	SyncSend(self, ACC)
+	fmt.Println("\t+ Mutex connectInitMaster")
+	status := SyncSend(self, connInit, true)
 	mu.Unlock()
+	fmt.Println("\t- Mutex connectInitMaster")
+	if status == OK {
+		mu.Lock()
+		fmt.Println("\t+ Mutex connectInitMaster 2")
+		SyncSend(self, ACC, false)
+		mu.Unlock()
+		fmt.Println("\t- Mutex connectInitMaster 2")
+	} else {
+		return FAILED
+	}
 	self.ConnStatus = OK
-	go syncSignal(self, mu)
+	go func() { //Синхросигналы
+		//	fmt.Println("OK!\t Process init")
+		syncSignal(self, mu)
+	}()
+	go func() { //Отправка данных (синхронный)
+		for self.ConnStatus == OK {
+			val := <-self.Send
+			mu.Lock()
+			fmt.Println("\t+ Mutex master sender")
+			SyncSend(self, val, true)
+			mu.Unlock()
+			fmt.Println("\t- Mutex master sender")
+		}
+	}()
+	/*go func() {//Прием данных
+		for self.ConnStatus == OK {
+			mu.Lock()
+			val, _ := SyncRead(self, false)
+			mu.Unlock()
+			if val != ACC { //Анализ всех возможных флагов
+				//	self.Receive <- val
+			}
+		}
+	}()*/
+	return OK
 }
 func connectInitSlave(self *conn, mu *sync.Mutex) {
 	mu.Lock()
-	val, _ := SyncRead(self)
+	fmt.Println("\t+ Mutex connectInitSlave")
+	val, _ := SyncRead(self, false)
 	mu.Unlock()
-	if val == ACC {
-		self.ConnStatus = OK
+	fmt.Println("\t- Mutex connectInitSlave")
+	if val == connInit {
+		mu.Lock()
+		fmt.Println("\t+ Mutex connectInitSlave 2")
+		val, _ := SyncRead(self, false)
+		mu.Unlock()
+		fmt.Println("\t- Mutex connectInitSlave 2")
+		if val == ACC {
+			self.ConnStatus = OK
+			fmt.Println("OK!\t connection made")
+			go func() { //Прием данных
+				for self.ConnStatus == OK {
+					mu.Lock()
+					fmt.Println("\t+ Mutex slave reader")
+					val, _ := SyncRead(self, false)
+					mu.Unlock()
+					fmt.Println("\t- Mutex slave reader")
+					if val != ACC { //Анализ всех возможных флагов
+						//self.Receive <- val
+					}
+				}
+			}()
+			go func() {
+				for val := range self.Receive {
+					fmt.Println("<- " + val)
+				}
+			}()
+		}
+	}
+}
+
+/*------------------------------------------------------------------------------*/
+
+func CLIParser(stream chan string) {
+	var res string
+	for {
+		fmt.Print("command: ")
+		fmt.Scanln(&res)
+		if res == "OUT" {
+			break
+		}
+		stream <- res
+		fmt.Println("OK!\t command wrote ")
 	}
 }

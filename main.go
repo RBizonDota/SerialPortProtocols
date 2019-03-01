@@ -14,14 +14,10 @@ func manager(command string) {
 
 func goMaster() {
 	self := NewConn()
-	mu := &sync.Mutex{}
-	go func() {
-		for {
-			command := <-self.ManageStream
-			manageHandler(command, &self, mu)
-		}
-	}()
 	fmt.Println("OK!\t MASTER init")
+	mu := &sync.Mutex{}
+	go manageHandler(&self, mu)
+	CLIParser(self.ManageStream)
 	//openPort(&self, MASTER)
 	//self.ConnStatus = OK //должно получаться вследствие ConnectInit
 	/*if self.PortStatus == OK {
@@ -36,15 +32,21 @@ func goMaster() {
 func goSlave() {
 	self := NewConn()
 	fmt.Println("OK!\t SLAVE init")
-	openPort(&self, SLAVE)
+	mu := &sync.Mutex{}
+	go manageHandler(&self, mu)
+	CLIParser(self.ManageStream)
+	//openPort(&self, SLAVE)
 	//self.ConnStatus = OK
-	if self.PortStatus == OK {
+	/*if self.PortStatus == OK {
 		fmt.Println("OK!\t Port SLAVE opened")
 		go func() {
 			//fmt.Println(self.ConnStatus)
 			//		for self.ConnStatus == OK {
 			//fmt.Println("   OK!\tinited")
-			SyncRead(&self) //val
+			val, _ := SyncRead(&self) //val
+			if val == connInit {
+				connectInitSlave(&self, mu)
+			}
 			//fmt.Println("\tOK!\tstatus" + strconv.Itoa(val))
 			//		}
 
@@ -53,19 +55,20 @@ func goSlave() {
 		//обработка служебных кадров
 	} else {
 		fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
-	}
+	}*/
 
 }
-func main() {
+
+/*func main() {
 	go goSlave()
 	go goMaster()
 	defer fmt.Scanln()
-}
+}*/
 
 func simpleSend(self *conn) {
 	go func() {
 		for {
-			SyncSend(self, "Q")
+			SyncSend(self, "Q", true)
 			time.Sleep(time.Second)
 		}
 	}()
