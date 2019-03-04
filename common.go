@@ -41,6 +41,12 @@ const TIMEOUT = 3 * time.Second
 
 const connInit = "ConnI"
 
+const connEnd = "ConnE"
+
+const transmitInit = "TranI"
+
+const transmitEnd = "TranE"
+
 //ACC сообщение подтверждения
 const ACC = "A"
 
@@ -79,10 +85,16 @@ func openPort(self *conn, portName string) {
 		self.PortStatus = FAILED
 		return
 	}
-	self.Receive = make(chan string, 1)
-	self.Send = make(chan string, 1)
+	self.Receive = make(chan string, 5)
+	self.Send = make(chan string, 5)
 	self.PortStatus = OK
 	self.Port = s
+
+	self.Send <- "Some "
+	self.Send <- "Data "
+	self.Send <- "Is   "
+	self.Send <- "Here "
+	self.Send <- transmitEnd
 	return
 }
 
@@ -256,7 +268,11 @@ func manageHandler(self *conn, mu *sync.Mutex) {
 			} else {
 				fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
 			}
-			connectInitSlave(self, mu)
+			go connectInitSlave(self, mu)
+		case "transmitInit":
+			transmitDataMaster(self, mu)
+		case "ConnEnd":
+			connectEndMaster(self, mu)
 			/*go func() {
 				//for self.PortStatus == OK {
 			LOOP:
@@ -365,8 +381,14 @@ func connectInitSlave(self *conn, mu *sync.Mutex) {
 					val, _ := SyncRead(self, false)
 					mu.Unlock()
 					fmt.Println("\t- Mutex slave reader")
-					if val != ACC { //Анализ всех возможных флагов
-						//self.Receive <- val
+					//if val != ACC { //Анализ всех возможных флагов
+					//self.Receive <- val
+					//}
+					if val == transmitInit {
+						transmitDataSlave(self, mu)
+					}
+					if val == connEnd {
+						connectEndSlave(self, mu)
 					}
 				}
 			}()
@@ -377,6 +399,63 @@ func connectInitSlave(self *conn, mu *sync.Mutex) {
 			}()
 		}
 	}
+}
+
+func connectEndMaster(self *conn, mu *sync.Mutex) {
+	mu.Lock()
+	fmt.Println("\t+ Mutex connectEndMaster")
+	status := SyncSend(self, connEnd, true)
+	if status == OK {
+		val, _ := SyncRead(self, false)
+		if val == connEnd {
+			self.ConnStatus = NOTCONNECTED
+		}
+	}
+	mu.Unlock()
+	fmt.Println("\t- Mutex connectEndMaster")
+}
+func connectEndSlave(self *conn, mu *sync.Mutex) {
+	mu.Lock()
+	fmt.Println("\t+ Mutex connectEndSlave")
+	status := SyncSend(self, connEnd, true)
+	if status == OK {
+		self.ConnStatus = NOTCONNECTED
+	}
+	mu.Unlock()
+	fmt.Println("\t- Mutex connectEndSlave")
+	go connectInitSlave(self, mu)
+}
+
+func transmitDataMaster(self *conn, mu *sync.Mutex) {
+	mu.Lock()
+	fmt.Println("\t+ Mutex transmitDataMaster")
+	status := SyncSend(self, transmitInit, true)
+	if status == OK {
+		for {
+			val, _ := SyncRead(self, false)
+			if val == transmitEnd {
+				break
+			}
+			self.Receive <- val
+		}
+	}
+	mu.Unlock()
+	fmt.Println("\t- Mutex transmitDataMaster")
+
+}
+
+func transmitDataSlave(self *conn, mu *sync.Mutex) {
+	mu.Lock()
+	fmt.Println("\t+ Mutex transmitDataSlave")
+	for {
+		val := <-self.Send
+		SyncSend(self, val, true) //TODO анализировать статус и регистрировать его в канальном уровне
+		if val == transmitEnd {
+			break
+		}
+	}
+	mu.Unlock()
+	fmt.Println("\t- Mutex transmitDataSlave")
 }
 
 /*------------------------------------------------------------------------------*/
