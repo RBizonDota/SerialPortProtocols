@@ -37,6 +37,9 @@ const MASTER = "COM1"
 const SLAVE = "COM2"
 
 //TIMEOUT время ожидания
+const READTIMEOUT = 20 * time.Second
+
+//TIMEOUT время ожидания
 const TIMEOUT = 3 * time.Second
 
 const connInit = "ConnI"
@@ -78,23 +81,26 @@ func NewConn() conn {
 	return res
 }
 func openPort(self *conn, portName string) {
-	c := &serial.Config{Name: portName, Baud: 115200}
-	s, err := serial.OpenPort(c)
-	if err != nil {
-		fmt.Println("Couldn't open port with portName=" + portName + "! " + err.Error())
-		self.PortStatus = FAILED
-		return
+	if self.PortStatus != OK {
+		c := &serial.Config{Name: portName, Baud: 115200}
+		s, err := serial.OpenPort(c)
+		if err != nil {
+			fmt.Println("Couldn't open port with portName=" + portName + "! " + err.Error())
+			self.PortStatus = FAILED
+			return
+		}
+		self.Port = s
+		self.PortStatus = OK
 	}
 	self.Receive = make(chan string, 5)
 	self.Send = make(chan string, 5)
-	self.PortStatus = OK
-	self.Port = s
 
 	self.Send <- "Some "
 	self.Send <- "Data "
 	self.Send <- "Is   "
 	self.Send <- "Here "
 	self.Send <- transmitEnd
+
 	return
 }
 
@@ -191,6 +197,8 @@ func SyncSend(port *conn, data string, answer bool) (status int) {
 func SyncRead(port *conn, initOnly bool) (val string, status int) {
 	//fmt.Println("ProcessInit")
 	in := make(chan string, 1)
+	timer := time.NewTimer(READTIMEOUT)
+	/*in := make(chan string, 1)
 	readMes(port.Port, in)
 	val = <-in
 	//fmt.Println("\t<- " + val)
@@ -208,6 +216,32 @@ func SyncRead(port *conn, initOnly bool) (val string, status int) {
 	sendMes(port.Port, ACC)
 	//fmt.Println("SyncRead Passed")
 	fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(OK))
+	*/
+	readMes(port.Port, in)
+	select {
+	case <-timer.C:
+		fmt.Println("FAIL!\t timeout happend, RST")
+		timer.Stop()
+		//разрыв соединения
+		port.ConnStatus = NOTCONNECTED
+		return "-1", FAILED
+	case val := <-in:
+		if !timer.Stop() {
+			<-timer.C
+		}
+		if initOnly {
+			if val != connInit {
+				fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
+				return val, NOANSWER
+			}
+		} else if val == ACC {
+			fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
+			return val, NOANSWER
+		}
+		sendMes(port.Port, ACC)
+		fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(OK))
+		return val, OK
+	}
 	return val, OK
 }
 
@@ -241,14 +275,7 @@ func manageHandler(self *conn, mu *sync.Mutex) {
 				fmt.Println("OK!\t connection made")
 			} else if status == FAILED {
 				fmt.Println("FAIL!\t connection failed")
-			} /*if self.ConnStatus == OK {
-				go func() {
-					for self.PortStatus == OK {
-						val := <-self.Send
-						SyncSend(self, val)
-					}
-				}()
-			}*/
+			}
 		case "Open":
 			openPort(self, MASTER)
 			if self.PortStatus == OK {
@@ -273,44 +300,7 @@ func manageHandler(self *conn, mu *sync.Mutex) {
 			transmitDataMaster(self, mu)
 		case "ConnEnd":
 			connectEndMaster(self, mu)
-			/*go func() {
-				//for self.PortStatus == OK {
-			LOOP:
-				for {
-					select {
-					case <-stopChan:
-						break LOOP
-					default:
-					}
-					mu.Lock()
-					val, status := SyncRead(self, true)
-					mu.Unlock()
-					if val != ACC {
-						//	self.Receive <- val
-					}
-				}
-				//}
-			}()*/
-		/*case "rerunReader":
-		stopChan <- struct{}{}
-		go func() {
-			//for self.PortStatus == OK {
-		LOOP:
-			for {
-				select {
-				case <-stopChan:
-					break LOOP
-				default:
-				}
-				mu.Lock()
-				val, status := SyncRead(self, true)
-				mu.Unlock()
-				if val != ACC {
-					//	self.Receive <- val
-				}
-			}
-			//}
-		}()*/
+
 		default:
 			fmt.Println("FAIL!\t Unknown command!")
 		}
@@ -347,30 +337,29 @@ func connectInitMaster(self *conn, mu *sync.Mutex) int {
 			fmt.Println("\t- Mutex master sender")
 		}
 	}()
-	/*go func() {//Прием данных
-		for self.ConnStatus == OK {
-			mu.Lock()
-			val, _ := SyncRead(self, false)
-			mu.Unlock()
-			if val != ACC { //Анализ всех возможных флагов
-				//	self.Receive <- val
-			}
-		}
-	}()*/
+
 	return OK
 }
 func connectInitSlave(self *conn, mu *sync.Mutex) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex connectInitSlave")
-	val, _ := SyncRead(self, false)
+	val, status := SyncRead(self, false)
 	mu.Unlock()
 	fmt.Println("\t- Mutex connectInitSlave")
+	if status != OK {
+		fmt.Println("FAIL!\t Something wrong in connectInitSlave, read status=" + strconv.Itoa(status))
+		return
+	}
 	if val == connInit {
 		mu.Lock()
 		fmt.Println("\t+ Mutex connectInitSlave 2")
-		val, _ := SyncRead(self, false)
+		val, status2 := SyncRead(self, false)
 		mu.Unlock()
 		fmt.Println("\t- Mutex connectInitSlave 2")
+		if status2 != NOANSWER {
+			fmt.Println("FAIL!\t Something wrong in connectInitSlave, read 2 status=" + strconv.Itoa(status2))
+			return
+		}
 		if val == ACC {
 			self.ConnStatus = OK
 			fmt.Println("OK!\t connection made")
@@ -381,9 +370,6 @@ func connectInitSlave(self *conn, mu *sync.Mutex) {
 					val, _ := SyncRead(self, false)
 					mu.Unlock()
 					fmt.Println("\t- Mutex slave reader")
-					//if val != ACC { //Анализ всех возможных флагов
-					//self.Receive <- val
-					//}
 					if val == transmitInit {
 						transmitDataSlave(self, mu)
 					}
@@ -409,6 +395,7 @@ func connectEndMaster(self *conn, mu *sync.Mutex) {
 		val, _ := SyncRead(self, false)
 		if val == connEnd {
 			self.ConnStatus = NOTCONNECTED
+			fmt.Println("OK!\t Connection succesfully broken")
 		}
 	}
 	mu.Unlock()
@@ -420,9 +407,11 @@ func connectEndSlave(self *conn, mu *sync.Mutex) {
 	status := SyncSend(self, connEnd, true)
 	if status == OK {
 		self.ConnStatus = NOTCONNECTED
+		fmt.Println("OK!\t Connection succesfully broken")
 	}
 	mu.Unlock()
 	fmt.Println("\t- Mutex connectEndSlave")
+
 	go connectInitSlave(self, mu)
 }
 
