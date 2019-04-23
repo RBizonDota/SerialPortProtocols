@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
+	"time"
 )
 
 var MasksForZeros = []int64{0x7FFFFFFFF0000000, 0xFFFE000, 0x1FC0, 0x38, 0x7}
@@ -69,7 +70,7 @@ func InsertZeros(msg int64) int64 {
 func Code(msg int64, msgLen int) int64 {
 	var position uint = 1
 	msg = InsertZeros(msg)
-	fmt.Printf("withZero: %064b\n", msg)
+	//fmt.Printf("withZero: %064b\n", msg)
 
 	for i := 0; i < len(MainMasks); i++ {
 		controlBit := CountControlBit(msg, MainMasks[i], position)
@@ -155,10 +156,37 @@ func ToBytes(msg int64) []byte {
 }
 
 func main() {
-	//--------------Отправка файла----------------
-	var tmpArr []byte
+	//var tmpArr []byte
 
+	mychan := make(chan int64, 10)
+	//-------------проверка получения------------------------
+	go func() {
+		//TODO лучше вынести это в отдельную функцию
+		tmpArr := make([]byte, 0, 1)
+		for {
+			//TODO Обработка не закрытия канала, а флага начала и конца передачи
+			msg, val := <-mychan
+			if !val {
+				break
+			}
+			fmt.Println("Entry")
+			decoded, valid := Decode(msg, bits.Len(uint(56)))
+			fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
+			tmpArr = append(tmpArr, decoded...)
+
+		}
+		//TODO Сохранение файла в папку /data
+		//TODO сделать /data - выносной переменной DataFolder
+		fmt.Println(tmpArr)
+		fmt.Printf("Text: %s\n\n", string(tmpArr))
+	}()
+	//-------------------------------------------------------
+
+	//TODO Отправка флага начала передачи, длины названия в кадрах, длины тела в кадрах
+	//TODO (кадр флаг 1-м байтом, два последних - длина названия и длина тела)
+	//--------------Отправка файла----------------
 	var fileSize, i, bytesToRead int64
+	//TODO сделать название файла выносной переменной DataFileName
 	file, err := os.Open("text.txt")
 	CheckError(err)
 
@@ -167,23 +195,18 @@ func main() {
 	fileSize = stat.Size()
 	fmt.Printf("FileSize: %d\n", fileSize)
 	bytesToRead = 6
-
 	for i = 0; i < fileSize; i += bytesToRead {
 		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
 		dataInBits := ToBits(sliceOfBytes)
-		fmt.Printf("dataBits: %064b\n", dataInBits)
-		fmt.Printf("dataBitsLen: %d\n", bits.Len(uint(dataInBits)))
+		//fmt.Printf("dataBits: %064b\n", dataInBits)
+		//fmt.Printf("dataBitsLen: %d\n", bits.Len(uint(dataInBits)))
 		codedMsg := Code(dataInBits, bits.Len(uint(dataInBits)))
-		fmt.Printf("codedMsg: %064b\n\n", codedMsg)
-
-		//-------------проверка получения------------------------
-		decoded, valid := Decode(codedMsg, bits.Len(uint(dataInBits)))
-		fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
-		tmpArr = append(tmpArr, decoded...)
-		//------------------------------
+		//fmt.Printf("codedMsg: %064b\n\n", codedMsg)
+		mychan <- codedMsg
 	}
-	fmt.Println(tmpArr)
-	fmt.Printf("Text: %s\n\n", string(tmpArr))
+	//TODO Отправка флага конца передачи
+	close(mychan)
+	time.Sleep(time.Second)
 
 	//---------------Получение файла------------------------
 	// var bytesArr []byte
