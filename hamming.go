@@ -4,8 +4,16 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
+	"strconv"
 	"time"
 )
+
+//TODO не забыть задать нормальные флаги
+var DataTransmitStart = byte(122)
+var DataTransmitEnd = byte(144)
+
+var DataFileName = "text.txt"
+var DataFolder = "data/"
 
 var MasksForZeros = []int64{0x7FFFFFFFF0000000, 0xFFFE000, 0x1FC0, 0x38, 0x7}
 
@@ -160,48 +168,36 @@ func main() {
 
 	mychan := make(chan int64, 10)
 	//-------------проверка получения------------------------
-	go func() {
-		//TODO лучше вынести это в отдельную функцию
-		tmpArr := make([]byte, 0, 1)
-		for {
-			//TODO Обработка не закрытия канала, а флага начала и конца передачи
-			msg, val := <-mychan
-			if !val {
-				break
-			}
-			fmt.Println("Entry")
-			decoded, valid := Decode(msg, bits.Len(uint(56)))
-			fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
-			tmpArr = append(tmpArr, decoded...)
-
-		}
-		//TODO Сохранение файла в папку /data
-		//TODO сделать /data - выносной переменной DataFolder
-		fmt.Println(tmpArr)
-		fmt.Printf("Text: %s\n\n", string(tmpArr))
-	}()
+	go Getter(mychan)
 	//-------------------------------------------------------
 
 	//TODO Отправка флага начала передачи, длины названия в кадрах, длины тела в кадрах
 	//TODO (кадр флаг 1-м байтом, два последних - длина названия и длина тела)
 	//--------------Отправка файла----------------
-	var fileSize, i, bytesToRead int64
-	//TODO сделать название файла выносной переменной DataFileName
-	file, err := os.Open("text.txt")
+	var fileSize, nameSize, i, bytesToRead int64
+	var fileCadrSize, nameCadrSize byte
+	file, err := os.Open(DataFileName)
 	CheckError(err)
 
 	stat, err := file.Stat()
 	CheckError(err)
 	fileSize = stat.Size()
+	nameSize = int64(len(DataFileName))
 	fmt.Printf("FileSize: %d\n", fileSize)
 	bytesToRead = 6
+	fileCadrSize = byte(fileSize/bytesToRead + 1)
+	nameCadrSize = byte(nameSize/bytesToRead + 1)
+	fmt.Println("fileSize = " + strconv.Itoa(int(fileSize)) + ", fileCadrSize = " + strconv.Itoa(int(fileCadrSize)))
+	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
+	//TODO сбор кадра начала передачи данные в переменных fileCadrSize и nameCadrSize
+	//TODO цикл передачи названия
 	for i = 0; i < fileSize; i += bytesToRead {
 		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
 		dataInBits := ToBits(sliceOfBytes)
-		//fmt.Printf("dataBits: %064b\n", dataInBits)
-		//fmt.Printf("dataBitsLen: %d\n", bits.Len(uint(dataInBits)))
+		fmt.Printf("dataBits: %064b\n", dataInBits)
+		fmt.Printf("dataBitsLen: %d\n", bits.Len(uint(dataInBits)))
 		codedMsg := Code(dataInBits, bits.Len(uint(dataInBits)))
-		//fmt.Printf("codedMsg: %064b\n\n", codedMsg)
+		fmt.Printf("codedMsg: %064b\n\n", codedMsg)
 		mychan <- codedMsg
 	}
 	//TODO Отправка флага конца передачи
@@ -219,4 +215,37 @@ func main() {
 	// }
 	// text := string(bytesArr)
 	// //создать и записать в файл
+}
+
+func Getter(mychan chan int64) {
+	tmpArr := make([]byte, 0, 1)
+	for {
+		//TODO Обработка не закрытия канала, а флага начала и конца передачи
+		msg, val := <-mychan
+		if !val {
+			break
+		}
+		decoded, valid := Decode(msg, bits.Len(uint(56)))
+		fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
+		tmpArr = append(tmpArr, decoded...)
+
+	}
+	//TODO Сохранение файла в папку /data
+	//TODO сделать /data - выносной переменной DataFolder
+	fmt.Println(tmpArr)
+	fmt.Printf("Text: %s\n\n", string(tmpArr))
+	DataToFile("Test.txt", tmpArr)
+}
+
+//DataToFile true - все хорошо,false - возникла ошибка; ТРЕБУЕТ СУЩЕСТВОВАНИЯ ДИРЕКТОРИИ!!!
+func DataToFile(filename string, body []byte) bool {
+	file, err := os.Create(DataFolder + filename)
+	if err != nil {
+		fmt.Println("ERROR!!!   Unable to create file")
+		fmt.Println(err.Error())
+		return false
+	}
+	defer file.Close()
+	file.Write(body)
+	return true
 }
