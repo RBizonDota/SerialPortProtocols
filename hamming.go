@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var DataFileName = "text.txt"
+var DataFileName = "BigTextDoNotTransmit.txt"
 var DataFolder = "data/"
 
 var MasksForZeros = []int64{0x7FFFFFFFF0000000, 0xFFFE000, 0x1FC0, 0x38, 0x7}
@@ -185,7 +185,7 @@ func main() {
 	start := time.Now()
 	var fileSize, nameSize, i, bytesToRead int64
 	var nameCadrSize int16
-	var fileCadrSize int16
+	var fileCadrSize int32
 	file, err := os.Open(DataFileName)
 	CheckError(err)
 
@@ -194,8 +194,14 @@ func main() {
 	fileSize = stat.Size()
 	nameSize = int64(len(DataFileName))
 	bytesToRead = 6
-	fileCadrSize = int16(fileSize/bytesToRead + 1)
-	nameCadrSize = int16(nameSize/bytesToRead + 1)
+	fileCadrSize = int32(fileSize / bytesToRead)
+	if int(fileSize)%int(bytesToRead) != 0 {
+		fileCadrSize++
+	}
+	nameCadrSize = int16(nameSize / bytesToRead)
+	if int(nameSize)%int(bytesToRead) != 0 {
+		nameCadrSize++
+	}
 	fmt.Println("fileSize = " + strconv.Itoa(int(fileSize)) + ", fileCadrSize = " + strconv.Itoa(int(fileCadrSize)))
 	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
 	//----------------------Инициализирующее сообщение---------------------------
@@ -237,7 +243,7 @@ func main() {
 
 	//Получение initMsg - в Getter
 	//----------------Получение названия---------------------
-	var receivedName []byte
+	/*var receivedName []byte
 	var fileName string
 	for i = 0; i < nameSize; i += bytesToRead {
 		fileNamePart := <-mychan
@@ -260,8 +266,8 @@ func main() {
 	}
 	fmt.Printf("Received fileText: %s\n", string(fileTextBytes))
 	//------------------Запись в файл-------------------------
-	m := bytes.Index(fileTextBytes, []byte{0})
-	DataToFile(fileName, fileTextBytes[:m]) //без конечных нулей
+	m := bytes.Index(fileTextBytes, []byte{0}) //??????
+	DataToFile(fileName, fileTextBytes[:m])    //???????????*/
 }
 
 func Getter(mychan chan int64) {
@@ -274,13 +280,44 @@ func Getter(mychan chan int64) {
 	//TODO Анализ типа кадра
 	decoded, _, _ := Decode(msg, bits.Len(uint(56)))
 	//fmt.Printf("Init decoded:%08b, frameType:%d, valid:%t\n", decoded, frameType, valid)
-	fileSizeSlice := decoded[0:2]
-	nameSizeSlice := decoded[2:4]
-	fileSize := binary.LittleEndian.Uint16(fileSizeSlice)
+	fileSizeSlice := decoded[0:4]
+	nameSizeSlice := decoded[4:6]
+	fileSize := binary.LittleEndian.Uint32(fileSizeSlice)
 	nameSize := binary.LittleEndian.Uint16(nameSizeSlice)
 	fmt.Printf("fileSize: %d\n", fileSize)
 	fmt.Printf("nameSize: %d\n", nameSize)
 
+	var receivedName []byte
+	var fileName string
+	for i := 0; i < int(nameSize); i++ {
+		fileNamePart := <-mychan
+		decoded, _, _ := Decode(fileNamePart, bits.Len(uint(fileNamePart)))
+		//проверка frameType и valid?
+		receivedName = append(receivedName, decoded...)
+	}
+	fmt.Println(string(receivedName))
+	n := bytes.Index(receivedName, []byte{0})
+	if n != -1 {
+		fileName = string(receivedName[:n]) //без конечных нулей
+	} else {
+		fileName = string(receivedName)
+	}
+	fmt.Printf("Received fileName: %s\n", fileName)
+
+	//---------------Получение файла------------------------
+	var fileTextBytes []byte
+	for i := 0; i < int(fileSize); i++ {
+		receivedStr := <-mychan
+		decoded, _, _ := Decode(receivedStr, bits.Len(uint(receivedStr)))
+		//проверка frameType и valid?
+		fileTextBytes = append(fileTextBytes, decoded...)
+	}
+	//fmt.Printf("Received fileText: %s\n", string(fileTextBytes))
+	//------------------Запись в файл-------------------------
+	//m := bytes.Index(fileTextBytes, []byte{0})
+	//fmt.Println(string(fileTextBytes[:m]))
+	//DataToFile(fileName, fileTextBytes[:m]) //без конечных нулей
+	DataToFile(fileName, fileTextBytes)
 	//fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
 	//tmpArr = append(tmpArr, decoded...)
 	//fmt.Println(tmpArr)
@@ -297,19 +334,21 @@ func DataToFile(filename string, body []byte) bool {
 		return false
 	}
 	defer file.Close()
-	file.Write(body)
+	_, err = file.Write(body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Println(len(body))
 	return true
 }
 
-func GetInitMsg(fileCadrSize int16, nameCadrSize int16) []byte {
-	initMsgBytes1 := make([]byte, 2) //fileCadrSize [7 0]
+func GetInitMsg(fileCadrSize int32, nameCadrSize int16) []byte {
+	initMsgBytes1 := make([]byte, 4) //fileCadrSize [7 0]
 	initMsgBytes2 := make([]byte, 2) //nameCadrSize [2 0]
-	initMsgBytes3 := make([]byte, 2) //StartCadr (для восстановления после разрыва)
 	//WARNING МЕНЯЕТ БАЙТЫ МЕСТАМИ, СНАЧАЛА МЛАДШИЕ, ПОТОМ СТАРШИЕ
-	binary.LittleEndian.PutUint16(initMsgBytes1, uint16(fileCadrSize))
+	binary.LittleEndian.PutUint32(initMsgBytes1, uint32(fileCadrSize))
 	binary.LittleEndian.PutUint16(initMsgBytes2, uint16(nameCadrSize))
 	resinitMsg := append(initMsgBytes1, initMsgBytes2...)
-	resinitMsg = append(resinitMsg, initMsgBytes3...)
 	resinitMsg = AddFrameType(resinitMsg, "init")
 	return resinitMsg
 }
