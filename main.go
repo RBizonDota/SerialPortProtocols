@@ -13,57 +13,28 @@ func manager(command string) {
 }
 
 func goMaster() {
+	//cnf := getCnf()
+	cnfname := "cnf_master.json"
+	cnf := getCnf(cnfname)
+	fmt.Println(cnf)
 	self := NewConn()
-	fmt.Println("OK!\t MASTER init")
+	fmt.Println("OK!\t   MASTER init")
 	mu := &sync.Mutex{}
-	go manageHandler(&self, mu)
+	go manageHandler(&self, mu, cnf, cnfname)
 	CLIParser(self.ManageStream)
-	//openPort(&self, MASTER)
-	//self.ConnStatus = OK //должно получаться вследствие ConnectInit
-	/*if self.PortStatus == OK {
-		fmt.Println("OK!\t Port MASTER opened")
-		go syncSignal(&self, mu)
-	} else {
-		fmt.Println("FAIL!\t UNABLE TO OPEN PORT MASTER!!!")
-		return
-	}*/
 	return
 }
 func goSlave() {
+	cnfname := "cnf_slave.json"
+	cnf := getCnf(cnfname)
+	fmt.Println(cnf)
 	self := NewConn()
-	fmt.Println("OK!\t SLAVE init")
+	fmt.Println("OK!\t   SLAVE init")
 	mu := &sync.Mutex{}
-	go manageHandler(&self, mu)
+	go manageHandler(&self, mu, cnf, cnfname)
 	CLIParser(self.ManageStream)
-	//openPort(&self, SLAVE)
-	//self.ConnStatus = OK
-	/*if self.PortStatus == OK {
-		fmt.Println("OK!\t Port SLAVE opened")
-		go func() {
-			//fmt.Println(self.ConnStatus)
-			//		for self.ConnStatus == OK {
-			//fmt.Println("   OK!\tinited")
-			val, _ := SyncRead(&self) //val
-			if val == connInit {
-				connectInitSlave(&self, mu)
-			}
-			//fmt.Println("\tOK!\tstatus" + strconv.Itoa(val))
-			//		}
-
-		}()
-		//проверка кадра на тип
-		//обработка служебных кадров
-	} else {
-		fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
-	}*/
 
 }
-
-/*func main() {
-	go goSlave()
-	go goMaster()
-	defer fmt.Scanln()
-}*/
 
 func simpleSend(self *conn) {
 	go func() {

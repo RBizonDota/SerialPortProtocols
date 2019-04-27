@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -80,12 +82,12 @@ func NewConn() conn {
 	}
 	return res
 }
-func openPort(self *conn, portName string) {
+func openPort(self *conn, cnf *CNF) {
 	if self.PortStatus != OK {
-		c := &serial.Config{Name: portName, Baud: 115200}
+		c := &serial.Config{Name: cnf.Name, Baud: cnf.Baud}
 		s, err := serial.OpenPort(c)
 		if err != nil {
-			fmt.Println("Couldn't open port with portName=" + portName + "! " + err.Error())
+			fmt.Println("Couldn't open port with portName=" + cnf.Name + "! " + err.Error())
 			self.PortStatus = FAILED
 			return
 		}
@@ -95,13 +97,21 @@ func openPort(self *conn, portName string) {
 	self.Receive = make(chan string, 5)
 	self.Send = make(chan string, 5)
 
-	self.Send <- "Some "
-	self.Send <- "Data "
-	self.Send <- "Is   "
-	self.Send <- "Here "
-	self.Send <- transmitEnd
-
 	return
+}
+
+func closePort(self *conn, cnf *CNF) {
+	if self.PortStatus == OK {
+		err := self.Port.Close()
+		if err != nil {
+			fmt.Println("FAIL!\t " + err.Error())
+			return
+		}
+		self.PortStatus = CLOSED
+		self.Receive = nil
+		self.Send = nil
+		self.Port = nil
+	}
 }
 
 /*------------------------------------------------------------------------------*/
@@ -185,9 +195,9 @@ func SyncSend(port *conn, data string, answer bool) (status int) {
 		status = <-sendMes(port.Port, data)
 	}
 	if val == ACC {
-		//fmt.Println("<- " + val)
-		//повторная отправка
+
 	} else {
+		//передача данных в поток
 	}
 	//fmt.Println("SyncSend Passed")
 	return status
@@ -198,25 +208,6 @@ func SyncRead(port *conn, initOnly bool) (val string, status int) {
 	//fmt.Println("ProcessInit")
 	in := make(chan string, 1)
 	timer := time.NewTimer(READTIMEOUT)
-	/*in := make(chan string, 1)
-	readMes(port.Port, in)
-	val = <-in
-	//fmt.Println("\t<- " + val)
-	if initOnly {
-		fmt.Println(strconv.Itoa(port.ConnStatus))
-		if val != connInit {
-			fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
-			return val, NOANSWER
-		}
-	}
-	if val == ACC {
-		fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
-		return val, NOANSWER
-	}
-	sendMes(port.Port, ACC)
-	//fmt.Println("SyncRead Passed")
-	fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(OK))
-	*/
 	readMes(port.Port, in)
 	select {
 	case <-timer.C:
@@ -231,15 +222,15 @@ func SyncRead(port *conn, initOnly bool) (val string, status int) {
 		}
 		if initOnly {
 			if val != connInit {
-				fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
+				fmt.Println("OK!\t   message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
 				return val, NOANSWER
 			}
 		} else if val == ACC {
-			fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
+			fmt.Println("OK!\t   message received, val=" + val + " status=" + strconv.Itoa(NOANSWER))
 			return val, NOANSWER
 		}
 		sendMes(port.Port, ACC)
-		fmt.Println("OK!\t message received, val=" + val + " status=" + strconv.Itoa(OK))
+		fmt.Println("OK!\t   message received, val=" + val + " status=" + strconv.Itoa(OK))
 		return val, OK
 	}
 	return val, OK
@@ -264,7 +255,8 @@ func syncSignal(port *conn, mu *sync.Mutex) {
 
 /*------------------------------------------------------------------------------*/
 
-func manageHandler(self *conn, mu *sync.Mutex) {
+func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
+	cnf := mycnf
 	//var stopChan = make(chan struct{}, 1)
 	for command := range self.ManageStream {
 		//fmt.Println("OK!\t manager init")
@@ -272,26 +264,26 @@ func manageHandler(self *conn, mu *sync.Mutex) {
 		case "ConnInit":
 			status := connectInitMaster(self, mu)
 			if status == OK {
-				fmt.Println("OK!\t connection made")
+				fmt.Println("OK!\t   connection made")
 			} else if status == FAILED {
 				fmt.Println("FAIL!\t connection failed")
 			}
 		case "Open":
-			openPort(self, MASTER)
+			openPort(self, cnf)
 			if self.PortStatus == OK {
-				fmt.Println("OK!\t Port MASTER opened")
+				fmt.Println("OK!\t   Port MASTER opened")
 			} else {
 				fmt.Println("FAIL!\t UNABLE TO OPEN PORT MASTER!!!")
 			}
-			go func() {
+			/*go func() {
 				for val := range self.Receive {
 					fmt.Println("   <-" + val)
 				}
-			}()
+			}()*/
 		case "OpenSlave": //Потом убрать, подгрузку названия проводить из конфига
-			openPort(self, SLAVE)
+			openPort(self, cnf)
 			if self.PortStatus == OK {
-				fmt.Println("OK!\t Port SLAVE opened")
+				fmt.Println("OK!\t   Port SLAVE opened")
 			} else {
 				fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
 			}
@@ -300,7 +292,24 @@ func manageHandler(self *conn, mu *sync.Mutex) {
 			transmitDataMaster(self, mu)
 		case "ConnEnd":
 			connectEndMaster(self, mu)
-
+		case "SetCNF":
+			//сериализованный CNF
+			data := <-self.ManageStream
+			res := &CNF{}
+			err := json.Unmarshal([]byte(data), &res)
+			if err != nil {
+				fmt.Println("FAIL!\t Cannot unmarshal cnf data")
+			} else {
+				setCnf(res, cnfname)
+				cnf = res
+			}
+		case "Close":
+			closePort(self, cnf)
+			if self.PortStatus == CLOSED {
+				fmt.Println("OK!\t   Port closed")
+			} else {
+				fmt.Println("FAIL!\t UNABLE TO CLOSE PORT!!!")
+			}
 		default:
 			fmt.Println("FAIL!\t Unknown command!")
 		}
@@ -459,5 +468,49 @@ func CLIParser(stream chan string) {
 		}
 		stream <- res
 		fmt.Println("OK!\t command wrote ")
+	}
+}
+
+type CNF struct {
+	Name string
+	Baud int
+}
+
+func getCnf(cnfname string) *CNF {
+	fileInfo, err := os.Stat(cnfname)
+
+	file, err := os.Open(cnfname)
+	if err != nil {
+		panic(err)
+	}
+	buf := make([]byte, int(fileInfo.Size()))
+	_, err = file.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	res := &CNF{}
+	err = json.Unmarshal(buf, &res)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+func setCnf(data *CNF, cnfname string) {
+	// file, err := os.Open("cnf.json")
+	file, err := os.OpenFile(cnfname, os.O_WRONLY, 0755)
+	if err != nil {
+		panic(err)
+	}
+	err = file.Truncate(0)
+	if err != nil {
+		panic(err)
+	}
+	buf, err := json.Marshal(*data)
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Write(buf)
+	if err != nil {
+		panic(err)
 	}
 }
