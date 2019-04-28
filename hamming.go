@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
-	"strconv"
-	"time"
 )
 
 var DataFileName = "BigTextDoNotTransmit.txt"
@@ -19,6 +17,18 @@ var MainMasks = []int64{0x5555555555555555, 0x6666666666666666, 0x78787878787878
 	0x7F807F807F807F80, 0x7FFF80007FFF8000, 0x7FFFFFFF80000000}
 
 var DeleteBitsMasks = []int64{0x7FFFFFFF00000000, 0x7FFF0000, 0x7F00, 0x70, 0x4}
+
+const (
+	syncCadr         byte = 228
+	accCadr          byte = 10
+	connInit         byte = 33
+	connEnd          byte = 22
+	infoCadr         byte = 240
+	transInitCadr    byte = 150
+	transAnsInitCadr byte = 122
+	transEndCadr     byte = 144
+	defaultCadr      byte = 42
+)
 
 func CheckError(err error) { //remake
 	if err != nil {
@@ -44,15 +54,23 @@ func AddFrameType(bytesArr []byte, frameType string) []byte {
 	var firstByte []byte
 	switch frameType {
 	case "info":
-		firstByte = append(firstByte, 240)
+		firstByte = append(firstByte, infoCadr)
 	case "noinfo":
-		firstByte = append(firstByte, 42) // еще кейсы
+		firstByte = append(firstByte, defaultCadr)
+	case "transinit":
+		firstByte = append(firstByte, transAnsInitCadr)
+	case "transend":
+		firstByte = append(firstByte, transEndCadr)
 	case "init":
-		firstByte = append(firstByte, 122)
+		firstByte = append(firstByte, connInit)
 	case "end":
-		firstByte = append(firstByte, 144)
+		firstByte = append(firstByte, connEnd)
+	case "sync":
+		firstByte = append(firstByte, syncCadr)
+	case "acc":
+		firstByte = append(firstByte, accCadr)
 	default:
-		firstByte = append(firstByte, 42)
+		firstByte = append(firstByte, defaultCadr)
 	}
 
 	bytesArr = append(firstByte, bytesArr...)
@@ -171,7 +189,7 @@ func ToBytes(msg int64) ([]byte, byte) {
 	return sliceBytes, frameType
 }
 
-func main() {
+/*func main() {
 	//var tmpArr []byte
 
 	mychan := make(chan int64, 10)
@@ -267,8 +285,8 @@ func main() {
 	fmt.Printf("Received fileText: %s\n", string(fileTextBytes))
 	//------------------Запись в файл-------------------------
 	m := bytes.Index(fileTextBytes, []byte{0}) //??????
-	DataToFile(fileName, fileTextBytes[:m])    //???????????*/
-}
+	DataToFile(fileName, fileTextBytes[:m])    //???????????
+}*/
 
 func Getter(mychan chan int64) {
 	//tmpArr := make([]byte, 0, 1)

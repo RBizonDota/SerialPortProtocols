@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 )
 
 func manager(command string) {
@@ -36,11 +35,11 @@ func goSlave() {
 
 }
 
-func simpleSend(self *conn) {
+/*func simpleSend(self *conn) {
 	go func() {
 		for {
 			SyncSend(self, "Q", true)
 			time.Sleep(time.Second)
 		}
 	}()
-}
+}*/
