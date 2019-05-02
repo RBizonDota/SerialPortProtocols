@@ -42,6 +42,7 @@ func slaveListener() {
 }
 
 func main() {
+	go slaveListener()
 	listner, err := net.Listen("tcp", ":8888")
 	if err != nil {
 		panic(err)
