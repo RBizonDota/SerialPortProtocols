@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/bits"
@@ -57,8 +56,11 @@ func AddFrameType(bytesArr []byte, frameType string) []byte {
 		firstByte = append(firstByte, infoCadr)
 	case "noinfo":
 		firstByte = append(firstByte, defaultCadr)
-	case "transinit":
+
+	case "transansinit":
 		firstByte = append(firstByte, transAnsInitCadr)
+	case "transinit":
+		firstByte = append(firstByte, transInitCadr)
 	case "transend":
 		firstByte = append(firstByte, transEndCadr)
 	case "init":
@@ -288,7 +290,7 @@ func ToBytes(msg int64) ([]byte, byte) {
 	DataToFile(fileName, fileTextBytes[:m])    //???????????
 }*/
 
-func Getter(mychan chan int64) {
+/*func Getter(mychan chan int64) {
 	//tmpArr := make([]byte, 0, 1)
 	//TODO Обработка не закрытия канала, а флага начала и конца передачи
 	msg, val := <-mychan
@@ -341,11 +343,15 @@ func Getter(mychan chan int64) {
 	//fmt.Println(tmpArr)
 	//fmt.Printf("Text: %s\n\n", string(tmpArr))
 	//DataToFile("Test.txt", tmpArr)
-}
+}*/
 
 //DataToFile true - все хорошо,false - возникла ошибка; ТРЕБУЕТ СУЩЕСТВОВАНИЯ ДИРЕКТОРИИ!!!
-func DataToFile(filename string, body []byte) bool {
-	file, err := os.Create(DataFolder + filename)
+func DataToFile(filename string, body []byte, dirname string) bool {
+	if dirname == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return false
+	}
+	file, err := os.Create(dirname + filename)
 	if err != nil {
 		fmt.Println("ERROR!!!   Unable to create file")
 		fmt.Println(err.Error())
@@ -367,6 +373,17 @@ func GetInitMsg(fileCadrSize int32, nameCadrSize int16) []byte {
 	binary.LittleEndian.PutUint32(initMsgBytes1, uint32(fileCadrSize))
 	binary.LittleEndian.PutUint16(initMsgBytes2, uint16(nameCadrSize))
 	resinitMsg := append(initMsgBytes1, initMsgBytes2...)
-	resinitMsg = AddFrameType(resinitMsg, "init")
 	return resinitMsg
+}
+
+func delEndZeros(data []byte) []byte {
+	//fmt.Println(data)
+	//fmt.Println(len(data))
+	for i := len(data) - 1; i > -1; i-- {
+		//fmt.Println("i = " + strconv.Itoa(i))
+		if data[i] != 0 {
+			return data[:i]
+		}
+	}
+	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -296,9 +297,9 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 			} else {
 				fmt.Println("FAIL!\t UNABLE TO OPEN PORT SLAVE!!!")
 			}
-			go connectInitSlave(self, mu)
+			go connectInitSlave(self, mu, cnf)
 		case "transmitInit":
-			transmitDataMaster(self, mu)
+			transmitDataMaster(self, mu, cnf.FileDir)
 		case "ConnEnd":
 			connectEndMaster(self, mu)
 		case "SetCNF":
@@ -312,6 +313,12 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 				setCnf(res, cnfname)
 				cnf = res
 			}
+		case "SetFileName":
+			data := <-self.ManageStream
+			cnf.FileName = data
+		case "SetFileDir":
+			data := <-self.ManageStream
+			cnf.FileDir = data
 		case "Close":
 			closePort(self, cnf)
 			if self.PortStatus == CLOSED {
@@ -358,7 +365,7 @@ func connectInitMaster(self *conn, mu *sync.Mutex) int {
 
 	return OK
 }
-func connectInitSlave(self *conn, mu *sync.Mutex) {
+func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex connectInitSlave")
 	_, tp, status := SyncRead(self, false)
@@ -391,9 +398,9 @@ func connectInitSlave(self *conn, mu *sync.Mutex) {
 					mu.Unlock()
 					fmt.Println("\t- Mutex slave reader")
 					if tp == transInitCadr {
-						transmitDataSlave(self, mu)
+						transmitDataSlave(self, mu, cnf.FileName)
 					} else if tp == connEnd {
-						connectEndSlave(self, mu)
+						connectEndSlave(self, mu, cnf)
 					} else if tp == infoCadr {
 						self.Receive <- val
 					}
@@ -422,7 +429,7 @@ func connectEndMaster(self *conn, mu *sync.Mutex) {
 	mu.Unlock()
 	fmt.Println("\t- Mutex connectEndMaster")
 }
-func connectEndSlave(self *conn, mu *sync.Mutex) {
+func connectEndSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex connectEndSlave")
 	status := SyncSend(self, connEndMsg, "end", true)
@@ -433,37 +440,126 @@ func connectEndSlave(self *conn, mu *sync.Mutex) {
 	mu.Unlock()
 	fmt.Println("\t- Mutex connectEndSlave")
 
-	go connectInitSlave(self, mu)
+	go connectInitSlave(self, mu, cnf)
 }
 
-func transmitDataMaster(self *conn, mu *sync.Mutex) {
+func transmitDataMaster(self *conn, mu *sync.Mutex, fileDir string) {
+	if fileDir == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return
+	}
 	mu.Lock()
 	fmt.Println("\t+ Mutex transmitDataMaster")
+	defer fmt.Println("\t- Mutex transmitDataMaster")
+	defer mu.Unlock()
+
 	status := SyncSend(self, transmitInit, "transinit", true)
 	if status == OK {
-		for {
-			val, tp, _ := SyncRead(self, false)
-			if tp == transEndCadr {
-				break
-			}
-			self.Receive <- val
+		val, _, status := SyncRead(self, false)
+		if status != OK {
+			return
 		}
+		fileSizeSlice := []byte(val)[0:4]
+		nameSizeSlice := []byte(val)[4:6]
+		fileSize := binary.LittleEndian.Uint32(fileSizeSlice)
+		nameSize := binary.LittleEndian.Uint16(nameSizeSlice)
+		fmt.Printf("fileSize: %d\n", fileSize)
+		fmt.Printf("nameSize: %d\n", nameSize)
+		var receivedName []byte
+		var fileName string
+		for i := 0; i < int(nameSize); i++ {
+			val, _, status := SyncRead(self, false)
+			if status == OK {
+				//проверка frameType и valid?
+				receivedName = append(receivedName, []byte(val)...)
+			} else {
+				return
+			}
+		}
+		fmt.Println(string(receivedName))
+		n := bytes.Index(receivedName, []byte{0})
+		if n != -1 {
+			fileName = string(receivedName[:n]) //без конечных нулей
+		} else {
+			fileName = string(receivedName)
+		}
+		fmt.Printf("Received fileName: %s\n", fileName)
+
+		//---------------Получение файла------------------------
+		var fileTextBytes []byte
+		for i := 0; i < int(fileSize); i++ {
+			val, _, status := SyncRead(self, false)
+			if status == OK {
+				//проверка frameType и valid?
+				fileTextBytes = append(fileTextBytes, []byte(val)...)
+			} else {
+				return
+			}
+		}
+		fileTextBytes = delEndZeros(fileTextBytes)
+		DataToFile(fileName, fileTextBytes, fileDir)
 	}
-	mu.Unlock()
-	fmt.Println("\t- Mutex transmitDataMaster")
 
 }
 
-func transmitDataSlave(self *conn, mu *sync.Mutex) {
+func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex transmitDataSlave")
-	for {
-		val := <-self.Send
-		SyncSend(self, val, "info", true) //TODO анализировать статус и регистрировать его в канальном уровне
-		if val == transmitEnd {
-			break
+	start := time.Now()
+	var fileSize, nameSize, i, bytesToRead int64
+	var nameCadrSize int16
+	var fileCadrSize int32
+	file, err := os.Open(DataFileName)
+	CheckError(err)
+
+	stat, err := file.Stat()
+	CheckError(err)
+	fileSize = stat.Size()
+	nameSize = int64(len(DataFileName))
+	bytesToRead = 6
+	fileCadrSize = int32(fileSize / bytesToRead)
+	if int(fileSize)%int(bytesToRead) != 0 {
+		fileCadrSize++
+	}
+	nameCadrSize = int16(nameSize / bytesToRead)
+	if int(nameSize)%int(bytesToRead) != 0 {
+		nameCadrSize++
+	}
+	fmt.Println("fileSize = " + strconv.Itoa(int(fileSize)) + ", fileCadrSize = " + strconv.Itoa(int(fileCadrSize)))
+	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
+	//----------------------Инициализирующее сообщение---------------------------
+	initMsg := GetInitMsg(fileCadrSize, nameCadrSize)
+	status := SyncSend(self, string(initMsg), "transansinit", true)
+	if status != OK {
+		return
+	}
+	//----------------------Передача названия------------------------------------
+	nameBytes := []byte(DataFileName)
+	for len(nameBytes)%int(bytesToRead) != 0 { //TODO переписать, неэффективно
+		nameBytes = append(nameBytes, 0)
+	}
+	//fmt.Printf("nameBytes: %b\n", nameBytes)
+
+	for i = 0; i < nameSize; i += bytesToRead {
+		status := SyncSend(self, string(nameBytes[i:i+bytesToRead]), "info", true)
+		if status != OK {
+			return
 		}
 	}
+
+	//------------------Передача текста из файла---------------------------------
+	for i = 0; i < fileSize; i += bytesToRead {
+		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
+		status := SyncSend(self, string(sliceOfBytes), "info", true)
+		if status != OK {
+			return
+		}
+
+	}
+	//TODO Отправка флага конца передачи
+	//time.Sleep(time.Second)
+	fmt.Println(time.Since(start))
+
 	mu.Unlock()
 	fmt.Println("\t- Mutex transmitDataSlave")
 }
@@ -484,8 +580,10 @@ func CLIParser(stream chan string) {
 }
 
 type CNF struct {
-	Name string
-	Baud int
+	Name     string
+	Baud     int
+	FileName string
+	FileDir  string
 }
 
 func getCnf(cnfname string) *CNF {
