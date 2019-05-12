@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 )
@@ -42,6 +43,13 @@ func slaveListener() {
 }
 
 func main() {
+	data := &tcpMessage{
+		Type: 0,
+		Cnf:  CNF{},
+		Data: "mydata",
+	}
+	test, _ := json.Marshal(data)
+	fmt.Println(string(test))
 	go slaveListener()
 	listner, err := net.Listen("tcp", ":8888")
 	if err != nil {
