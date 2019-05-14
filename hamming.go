@@ -24,6 +24,7 @@ const (
 	connEnd          byte = 22
 	infoCadr         byte = 240
 	transInitCadr    byte = 150
+	transResumeCadr  byte = 055
 	transAnsInitCadr byte = 122
 	transEndCadr     byte = 144
 	defaultCadr      byte = 42
@@ -61,6 +62,8 @@ func AddFrameType(bytesArr []byte, frameType string) []byte {
 		firstByte = append(firstByte, transAnsInitCadr)
 	case "transinit":
 		firstByte = append(firstByte, transInitCadr)
+	case "transresume":
+		firstByte = append(firstByte, transResumeCadr)
 	case "transend":
 		firstByte = append(firstByte, transEndCadr)
 	case "init":

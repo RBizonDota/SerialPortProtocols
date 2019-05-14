@@ -56,6 +56,8 @@ const SYNC = "QQQQQQ"
 
 const INFO = "I"
 
+var startCadr uint32
+
 /*------------------------------------------------------------------------------*/
 
 type conn = struct {
@@ -65,6 +67,22 @@ type conn = struct {
 	ManageStream chan string
 	Receive      chan string
 	Send         chan string
+}
+
+type counter = struct {
+	CurName      int16
+	NameCadrSize int16
+	CurFile      int32
+	FileCadrSize int32
+	FileName     string
+}
+
+var receivingCounter = counter{ //все нули сначала
+	CurName:      5,
+	NameCadrSize: 0,
+	CurFile:      2,
+	FileCadrSize: 0,
+	FileName:     "",
 }
 
 func NewConn() conn {
@@ -300,6 +318,8 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 			go connectInitSlave(self, mu, cnf)
 		case "transmitInit":
 			transmitDataMaster(self, mu, cnf.FileDir)
+		case "transmitResume":
+			transmitResumeMaster(self, mu, cnf.FileDir)
 		case "ConnEnd":
 			connectEndMaster(self, mu)
 		case "SetCNF":
@@ -403,6 +423,9 @@ func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 						connectEndSlave(self, mu, cnf)
 					} else if tp == infoCadr {
 						self.Receive <- val
+					} else if tp == transResumeCadr {
+						fmt.Println("Here we are")
+						transmitDataSlave(self, mu, cnf.FileName)
 					}
 				}
 			}()
@@ -502,6 +525,27 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, fileDir string) {
 
 }
 
+func transmitResumeMaster(self *conn, mu *sync.Mutex, fileDir string) {
+	if fileDir == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return
+	}
+	mu.Lock()
+	fmt.Println("\t+ Mutex transmitDataMaster")
+	defer fmt.Println("\t- Mutex transmitDataMaster")
+	defer mu.Unlock()
+
+	//startCadr = uint32(receivingCounter.CurName) + uint32(receivingCounter.CurFile)
+	//bs := make([]byte, 6)
+	//binary.LittleEndian.PutUint32(bs, startCadr)
+	status := SyncSend(self, "RRRRRR", "transresume", true)
+	if status == OK {
+		fmt.Println("transmitResumeOK")
+	} else {
+		fmt.Println("transmitResume Not OK")
+	}
+}
+
 func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex transmitDataSlave")
@@ -512,6 +556,17 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	file, err := os.Open(DataFileName)
 	CheckError(err)
 
+	//-------------проверка получения startCadr---------------
+	startCadr, _, status := SyncRead(self, false)
+	if status == OK {
+		fmt.Println("Slave startCadr")
+		fmt.Println(startCadr)
+		return
+	} else {
+		fmt.Println("Slave no startCadr")
+		return
+	}
+	//-------------------------------------------------
 	stat, err := file.Stat()
 	CheckError(err)
 	fileSize = stat.Size()
@@ -529,7 +584,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
 	//----------------------Инициализирующее сообщение---------------------------
 	initMsg := GetInitMsg(fileCadrSize, nameCadrSize)
-	status := SyncSend(self, string(initMsg), "transansinit", true)
+	status = SyncSend(self, string(initMsg), "transansinit", true)
 	if status != OK {
 		return
 	}
