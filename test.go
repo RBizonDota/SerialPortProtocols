@@ -10,7 +10,12 @@ import (
 func testHandleConnection(conn net.Conn, prefix string, manageChan chan string) {
 	data := &tcpMessage{
 		Type: 0,
-		Cnf:  CNF{},
+		Cnf:  CNF{
+		    Name: "COM1",
+		    Baud:111523,
+		    FileName:"Hey",
+		    FileDir:"C://tmp",
+		},
 		Data: "mydata",
 	}
 	test, _ := json.Marshal(data)
@@ -68,8 +73,8 @@ func slaveListener(manageChan chan string) {
 func main() {
 	out := make(chan string)
 	go func() {
-		for data := range <-out {
-			fmt.Println("Data sent to manage stream, data = ", data)
+		for _, val := range <-out {
+			fmt.Println("Data sent to manage stream, data = ", val)
 		}
 	}()
 	data := &tcpMessage{
