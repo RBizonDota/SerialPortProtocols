@@ -69,6 +69,9 @@ type conn = struct {
 	Send         chan string
 }
 
+//ВИКА
+//впиши это как поле в cnf
+//только это нужно аккуратно сделать, чтобы данное поле могло быть nil, иначе проблемы будут
 type counter = struct {
 	CurName      int16
 	NameCadrSize int16
@@ -424,6 +427,10 @@ func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 					} else if tp == infoCadr {
 						self.Receive <- val
 					} else if tp == transResumeCadr {
+						//ВИКА
+						//Тут должна вызываться другая функция!
+						//которая начинает передачу только с того кадра
+						//имя файла должно браться из своей СТРУКТУРЫ(которую стоит внести в cnf)
 						fmt.Println("Here we are")
 						transmitDataSlave(self, mu, cnf.FileName)
 					}
@@ -531,19 +538,31 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, fileDir string) {
 		return
 	}
 	mu.Lock()
-	fmt.Println("\t+ Mutex transmitDataMaster")
-	defer fmt.Println("\t- Mutex transmitDataMaster")
+	fmt.Println("\t+ Mutex transmitResumeMaster")
+	defer fmt.Println("\t- Mutex transmitResumeMaster")
 	defer mu.Unlock()
 
-	//startCadr = uint32(receivingCounter.CurName) + uint32(receivingCounter.CurFile)
-	//bs := make([]byte, 6)
-	//binary.LittleEndian.PutUint32(bs, startCadr)
-	status := SyncSend(self, "RRRRRR", "transresume", true)
+	startCadr = uint32(receivingCounter.CurName) + uint32(receivingCounter.CurFile) //Это очень плохо
+	//ВИКА
+	//ты не защищаешься от переполнения
+	//как ты разбирать потом это будешь непонятно
+	//нужно заполнять все 6 байт
+	//первые два - CurName
+	//следующие 4 - curFile
+	//Аналогично с transmitDataSlave и transmitDataMaster, просто данные из структуры брать надо
+	//Стоит засунуть данную структуру в Cnf
+	//Нужно в данной структура сохранять путь к файлу, куда изначально проводилась запись
+	//чтобы туда и продолжить
+	fmt.Println(startCadr)
+	bs := make([]byte, 6)
+	binary.LittleEndian.PutUint32(bs[0:4], startCadr)
+	fmt.Println(bs)
+	/*status := SyncSend(self, "RRRRRR", "transresume", true)
 	if status == OK {
 		fmt.Println("transmitResumeOK")
 	} else {
 		fmt.Println("transmitResume Not OK")
-	}
+	}*/
 }
 
 func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
@@ -595,7 +614,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	}
 	//fmt.Printf("nameBytes: %b\n", nameBytes)
 
-	for i = 0; i < nameSize; i += bytesToRead {
+	for i = 0; i < nameSize; i += bytesToRead { //<-
 		status := SyncSend(self, string(nameBytes[i:i+bytesToRead]), "info", true)
 		if status != OK {
 			return
@@ -603,7 +622,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	}
 
 	//------------------Передача текста из файла---------------------------------
-	for i = 0; i < fileSize; i += bytesToRead {
+	for i = 0; i < fileSize; i += bytesToRead { //<-
 		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
 		status := SyncSend(self, string(sliceOfBytes), "info", true)
 		if status != OK {
@@ -617,6 +636,14 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 
 	mu.Unlock()
 	fmt.Println("\t- Mutex transmitDataSlave")
+}
+
+func transResumeSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
+	//ВИКА
+	//нужно реализовать эту функцию и вызывать ее
+	//она делает тоже самое, что и transmitDataSlave, только начинает отправлять данные не с 0 (см строки 617 и 625, пометил <-)
+	//а с номера, указанного в структуре
+
 }
 
 /*------------------------------------------------------------------------------*/
@@ -639,6 +666,10 @@ type CNF struct {
 	Baud     int
 	FileName string
 	FileDir  string
+
+	//ВИКА
+	//Добавь структуру сюда, так будет проще
+	//ТОлько нужно придумать, чтобы данное поле могло быть nil
 }
 
 func getCnf(cnfname string) *CNF {
