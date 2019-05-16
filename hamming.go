@@ -24,7 +24,7 @@ const (
 	connEnd          byte = 22
 	infoCadr         byte = 240
 	transInitCadr    byte = 150
-	transResumeCadr  byte = 055
+	transResumeCadr  byte = 55
 	transAnsInitCadr byte = 122
 	transEndCadr     byte = 144
 	defaultCadr      byte = 42
@@ -369,6 +369,43 @@ func DataToFile(filename string, body []byte, dirname string) bool {
 	return true
 }
 
+//Дозапись в существующий файл
+func AddDataToFile(filename string, body []byte, dirname string) bool {
+	if dirname == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return false
+	}
+	file, err := os.OpenFile(dirname+filename, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERROR!!!   Unable to open file")
+		fmt.Println(err.Error())
+		return false
+	}
+	defer file.Close()
+	_, err = file.Write(body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Println(len(body))
+	return true
+}
+
+func CreateFile(filename string, dirname string) bool {
+	if dirname == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return false
+	}
+	file, err := os.Create(dirname + filename)
+	if err != nil {
+		fmt.Println("ERROR!!!   Unable to create file")
+		fmt.Println(err.Error())
+		return false
+	}
+	fmt.Println(filename + " created")
+	defer file.Close()
+	return true
+}
+
 func GetInitMsg(fileCadrSize int32, nameCadrSize int16) []byte {
 	initMsgBytes1 := make([]byte, 4) //fileCadrSize [7 0]
 	initMsgBytes2 := make([]byte, 2) //nameCadrSize [2 0]
@@ -385,7 +422,7 @@ func delEndZeros(data []byte) []byte {
 	for i := len(data) - 1; i > -1; i-- {
 		//fmt.Println("i = " + strconv.Itoa(i))
 		if data[i] != 0 {
-			return data[:i]
+			return data[:i+1]
 		}
 	}
 	return nil

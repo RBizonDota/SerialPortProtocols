@@ -69,23 +69,12 @@ type conn = struct {
 	Send         chan string
 }
 
-//ВИКА
-//впиши это как поле в cnf
-//только это нужно аккуратно сделать, чтобы данное поле могло быть nil, иначе проблемы будут
 type counter = struct {
-	CurName      int16
-	NameCadrSize int16
-	CurFile      int32
-	FileCadrSize int32
+	CurName      uint16
+	NameCadrSize uint16
+	CurFile      uint32
+	FileCadrSize uint32
 	FileName     string
-}
-
-var receivingCounter = counter{ //все нули сначала
-	CurName:      5,
-	NameCadrSize: 0,
-	CurFile:      2,
-	FileCadrSize: 0,
-	FileName:     "",
 }
 
 func NewConn() conn {
@@ -320,9 +309,9 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 			}
 			go connectInitSlave(self, mu, cnf)
 		case "transmitInit":
-			transmitDataMaster(self, mu, cnf.FileDir)
+			transmitDataMaster(self, mu, cnf)
 		case "transmitResume":
-			transmitResumeMaster(self, mu, cnf.FileDir)
+			transmitResumeMaster(self, mu, cnf)
 		case "ConnEnd":
 			connectEndMaster(self, mu)
 		case "SetCNF":
@@ -427,12 +416,12 @@ func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 					} else if tp == infoCadr {
 						self.Receive <- val
 					} else if tp == transResumeCadr {
-						//ВИКА
-						//Тут должна вызываться другая функция!
-						//которая начинает передачу только с того кадра
-						//имя файла должно браться из своей СТРУКТУРЫ(которую стоит внести в cnf)
-						fmt.Println("Here we are")
-						transmitDataSlave(self, mu, cnf.FileName)
+						valSlice := []byte(val)
+						curNameSizeSlice := valSlice[0:2]
+						curFileSizeSlice := valSlice[2:6]
+						cnf.ResumeCounter.CurName = binary.LittleEndian.Uint16(curNameSizeSlice)
+						cnf.ResumeCounter.CurFile = binary.LittleEndian.Uint32(curFileSizeSlice)
+						transmitResumeSlave(self, mu, cnf)
 					}
 				}
 			}()
@@ -473,8 +462,8 @@ func connectEndSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	go connectInitSlave(self, mu, cnf)
 }
 
-func transmitDataMaster(self *conn, mu *sync.Mutex, fileDir string) {
-	if fileDir == "" {
+func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
+	if cnf.FileDir == "" {
 		fmt.Println("ERROR!!!   dirname not set")
 		return
 	}
@@ -491,49 +480,60 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, fileDir string) {
 		}
 		fileSizeSlice := []byte(val)[0:4]
 		nameSizeSlice := []byte(val)[4:6]
-		fileSize := binary.LittleEndian.Uint32(fileSizeSlice)
-		nameSize := binary.LittleEndian.Uint16(nameSizeSlice)
-		fmt.Printf("fileSize: %d\n", fileSize)
-		fmt.Printf("nameSize: %d\n", nameSize)
-		var receivedName []byte
-		var fileName string
-		for i := 0; i < int(nameSize); i++ {
+		fileCadrSize := binary.LittleEndian.Uint32(fileSizeSlice)
+		nameCadrSize := binary.LittleEndian.Uint16(nameSizeSlice)
+		cnf.ResumeCounter.NameCadrSize = nameCadrSize
+		cnf.ResumeCounter.FileCadrSize = fileCadrSize
+		fmt.Printf("fileCadrSize: %d\n", fileCadrSize)
+		fmt.Printf("nameCadrSize: %d\n", nameCadrSize)
+		for i := 0; i < int(nameCadrSize); i++ {
 			val, _, status := SyncRead(self, false)
 			if status == OK {
 				//проверка frameType и valid?
-				receivedName = append(receivedName, []byte(val)...)
+				//-----обработка последней части имени - возможно переделать---
+				n := bytes.Index([]byte(val), []byte{0})
+				if i == int(nameCadrSize-1) && n != -1 {
+					val = string([]byte(val[:n])) //без конечных нулей
+				}
+				//--------------------------
+				cnf.ResumeCounter.FileName += string(val)
+				cnf.ResumeCounter.CurName++
 			} else {
 				return
 			}
 		}
-		fmt.Println(string(receivedName))
-		n := bytes.Index(receivedName, []byte{0})
-		if n != -1 {
-			fileName = string(receivedName[:n]) //без конечных нулей
-		} else {
-			fileName = string(receivedName)
-		}
-		fmt.Printf("Received fileName: %s\n", fileName)
-
+		CreateFile(cnf.ResumeCounter.FileName, cnf.FileDir)
 		//---------------Получение файла------------------------
 		var fileTextBytes []byte
-		for i := 0; i < int(fileSize); i++ {
+		for i := 0; i < int(fileCadrSize); i++ {
 			val, _, status := SyncRead(self, false)
 			if status == OK {
 				//проверка frameType и valid?
-				fileTextBytes = append(fileTextBytes, []byte(val)...)
+				//fileTextBytes = append(fileTextBytes, []byte(val)...)
+				fileTextBytes = []byte(val)
+				if i == int(fileCadrSize-1) {
+					fileTextBytes = delEndZeros([]byte(val))
+				}
+				dataAdded := AddDataToFile(cnf.ResumeCounter.FileName, fileTextBytes, cnf.FileDir)
+				if dataAdded {
+					cnf.ResumeCounter.CurFile++
+				}
 			} else {
 				return
 			}
 		}
-		fileTextBytes = delEndZeros(fileTextBytes)
-		DataToFile(fileName, fileTextBytes, fileDir)
+		fmt.Print("ResumeCounter in Master: ")
+		fmt.Println(cnf.ResumeCounter)
+		cnf.ResumeCounter = counter{} //обнуление
 	}
-
 }
 
-func transmitResumeMaster(self *conn, mu *sync.Mutex, fileDir string) {
-	if fileDir == "" {
+func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
+	if cnf.ResumeCounter == (counter{}) {
+		fmt.Println("No file in queue, use transmitInit")
+		return
+	}
+	if cnf.FileDir == "" {
 		fmt.Println("ERROR!!!   dirname not set")
 		return
 	}
@@ -542,27 +542,66 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, fileDir string) {
 	defer fmt.Println("\t- Mutex transmitResumeMaster")
 	defer mu.Unlock()
 
-	startCadr = uint32(receivingCounter.CurName) + uint32(receivingCounter.CurFile) //Это очень плохо
-	//ВИКА
-	//ты не защищаешься от переполнения
-	//как ты разбирать потом это будешь непонятно
-	//нужно заполнять все 6 байт
-	//первые два - CurName
-	//следующие 4 - curFile
-	//Аналогично с transmitDataSlave и transmitDataMaster, просто данные из структуры брать надо
-	//Стоит засунуть данную структуру в Cnf
-	//Нужно в данной структура сохранять путь к файлу, куда изначально проводилась запись
-	//чтобы туда и продолжить
-	fmt.Println(startCadr)
-	bs := make([]byte, 6)
-	binary.LittleEndian.PutUint32(bs[0:4], startCadr)
-	fmt.Println(bs)
-	/*status := SyncSend(self, "RRRRRR", "transresume", true)
+	resumeMsgBytes1 := make([]byte, 4)
+	resumeMsgBytes2 := make([]byte, 2)
+	binary.LittleEndian.PutUint32(resumeMsgBytes1, uint32(cnf.ResumeCounter.CurFile))
+	binary.LittleEndian.PutUint16(resumeMsgBytes2, uint16(cnf.ResumeCounter.CurName))
+	resumeMsg := append(resumeMsgBytes2, resumeMsgBytes1...)
+	status := SyncSend(self, string(resumeMsg), "transresume", true)
 	if status == OK {
-		fmt.Println("transmitResumeOK")
-	} else {
-		fmt.Println("transmitResume Not OK")
-	}*/
+		val, _, status := SyncRead(self, false)
+		if status != OK {
+			return
+		}
+		fileSizeSlice := []byte(val)[0:4]
+		nameSizeSlice := []byte(val)[4:6]
+		fileSize := binary.LittleEndian.Uint32(fileSizeSlice)
+		nameSize := binary.LittleEndian.Uint16(nameSizeSlice)
+		fmt.Printf("fileSize: %d\n", fileSize)
+		fmt.Printf("nameSize: %d\n", nameSize)
+		var receivedNamePart []byte
+		var fileNamePart string
+		var fileExists = true
+		if cnf.ResumeCounter.FileName == "" {
+			for i := cnf.ResumeCounter.CurName; i < nameSize; i++ {
+				val, _, status := SyncRead(self, false)
+				if status == OK {
+					//проверка frameType и valid?
+					receivedNamePart = append(receivedNamePart, []byte(val)...)
+					cnf.ResumeCounter.CurName++
+				} else {
+					return
+				}
+			}
+			n := bytes.Index(receivedNamePart, []byte{0})
+			if n != -1 {
+				fileNamePart = string(receivedNamePart[:n]) //без конечных нулей
+			} else {
+				fileNamePart = string(receivedNamePart)
+			}
+			fmt.Printf("Received fileNamePart: %s\n", fileNamePart)
+			cnf.ResumeCounter.FileName += fileNamePart
+			fileExists = false
+		}
+		//---------------Получение файла------------------------
+		var filePartBytes []byte
+		for i := cnf.ResumeCounter.CurFile; i < fileSize; i++ {
+			val, _, status := SyncRead(self, false)
+			if status == OK {
+				//проверка frameType и valid?
+				filePartBytes = append(filePartBytes, []byte(val)...)
+				cnf.ResumeCounter.CurFile++
+			} else {
+				return
+			}
+		}
+		filePartBytes = delEndZeros(filePartBytes)
+		if fileExists {
+			AddDataToFile(cnf.ResumeCounter.FileName, filePartBytes, cnf.FileDir)
+		} else {
+			DataToFile(cnf.ResumeCounter.FileName, filePartBytes, cnf.FileDir)
+		}
+	}
 }
 
 func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
@@ -575,16 +614,72 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	file, err := os.Open(DataFileName)
 	CheckError(err)
 
-	//-------------проверка получения startCadr---------------
-	startCadr, _, status := SyncRead(self, false)
-	if status == OK {
-		fmt.Println("Slave startCadr")
-		fmt.Println(startCadr)
-		return
-	} else {
-		fmt.Println("Slave no startCadr")
+	stat, err := file.Stat()
+	CheckError(err)
+	fileSize = stat.Size()
+	nameSize = int64(len(DataFileName))
+	bytesToRead = 6
+	fileCadrSize = int32(fileSize / bytesToRead)
+	if int(fileSize)%int(bytesToRead) != 0 {
+		fileCadrSize++
+	}
+	nameCadrSize = int16(nameSize / bytesToRead)
+	if int(nameSize)%int(bytesToRead) != 0 {
+		nameCadrSize++
+	}
+	fmt.Println("fileSize = " + strconv.Itoa(int(fileSize)) + ", fileCadrSize = " + strconv.Itoa(int(fileCadrSize)))
+	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
+	//----------------------Инициализирующее сообщение---------------------------
+	initMsg := GetInitMsg(fileCadrSize, nameCadrSize)
+	status := SyncSend(self, string(initMsg), "transansinit", true)
+	if status != OK {
 		return
 	}
+	//----------------------Передача названия------------------------------------
+	nameBytes := []byte(DataFileName)
+	for len(nameBytes)%int(bytesToRead) != 0 { //TODO переписать, неэффективно
+		nameBytes = append(nameBytes, 0)
+	}
+	//fmt.Printf("nameBytes: %b\n", nameBytes)
+
+	for i = 0; i < nameSize; i += bytesToRead {
+		status := SyncSend(self, string(nameBytes[i:i+bytesToRead]), "info", true)
+		if status != OK {
+			return
+		}
+	}
+
+	//------------------Передача текста из файла---------------------------------
+	for i = 0; i < fileSize; i += bytesToRead {
+		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
+		status := SyncSend(self, string(sliceOfBytes), "info", true)
+		if status != OK {
+			return
+		}
+
+	}
+	//TODO Отправка флага конца передачи
+	//time.Sleep(time.Second)
+	fmt.Println(time.Since(start))
+
+	mu.Unlock()
+	fmt.Println("\t- Mutex transmitDataSlave")
+}
+
+func transmitResumeSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
+	mu.Lock()
+	fmt.Println("\t+ Mutex transmitResumeSlave")
+	start := time.Now()
+	var fileSize, nameSize, i, bytesToRead int64
+	var nameCadrSize int16
+	var fileCadrSize int32
+	file, err := os.Open(DataFileName)
+	CheckError(err)
+
+	//-------------проверка получения startCadr---------------
+	fmt.Println("Slave startCadr")
+	fmt.Println(cnf.ResumeCounter.CurName)
+	fmt.Println(cnf.ResumeCounter.CurFile)
 	//-------------------------------------------------
 	stat, err := file.Stat()
 	CheckError(err)
@@ -603,7 +698,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
 	//----------------------Инициализирующее сообщение---------------------------
 	initMsg := GetInitMsg(fileCadrSize, nameCadrSize)
-	status = SyncSend(self, string(initMsg), "transansinit", true)
+	status := SyncSend(self, string(initMsg), "transresume", true)
 	if status != OK {
 		return
 	}
@@ -614,7 +709,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	}
 	//fmt.Printf("nameBytes: %b\n", nameBytes)
 
-	for i = 0; i < nameSize; i += bytesToRead { //<-
+	for i = int64(cnf.ResumeCounter.CurName); i < nameSize; i += bytesToRead { //<-
 		status := SyncSend(self, string(nameBytes[i:i+bytesToRead]), "info", true)
 		if status != OK {
 			return
@@ -622,7 +717,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	}
 
 	//------------------Передача текста из файла---------------------------------
-	for i = 0; i < fileSize; i += bytesToRead { //<-
+	for i = int64(cnf.ResumeCounter.CurFile); i < fileSize; i += bytesToRead { //<-
 		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
 		status := SyncSend(self, string(sliceOfBytes), "info", true)
 		if status != OK {
@@ -635,15 +730,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 	fmt.Println(time.Since(start))
 
 	mu.Unlock()
-	fmt.Println("\t- Mutex transmitDataSlave")
-}
-
-func transResumeSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
-	//ВИКА
-	//нужно реализовать эту функцию и вызывать ее
-	//она делает тоже самое, что и transmitDataSlave, только начинает отправлять данные не с 0 (см строки 617 и 625, пометил <-)
-	//а с номера, указанного в структуре
-
+	fmt.Println("\t- Mutex transmitResumeSlave")
 }
 
 /*------------------------------------------------------------------------------*/
@@ -662,13 +749,13 @@ func CLIParser(stream chan string) {
 }
 
 type CNF struct {
-	Name     string
-	Baud     int
-	FileName string
-	FileDir  string
+	Name          string
+	Baud          int
+	FileName      string
+	FileDir       string
+	ResumeCounter counter
 
 	//ВИКА
-	//Добавь структуру сюда, так будет проще
 	//ТОлько нужно придумать, чтобы данное поле могло быть nil
 }
 
