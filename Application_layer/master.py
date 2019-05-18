@@ -107,7 +107,7 @@ class MainWindow(QtWidgets.QWidget):
         self.open_port = QtWidgets.QPushButton("Open the port", self)
         self.settings = QtWidgets.QPushButton("Settings", self)
         self.open_port.move(300, 50)
-        self.settings.move(300, 100)
+        self.settings.move(300, 125)
         self.open_port.clicked.connect(self.port_on_click)
         self.w = Second()
         self.settings.clicked.connect(self.w.settings_on_click)
@@ -161,16 +161,24 @@ class MainWindow(QtWidgets.QWidget):
             self.open_connection.hide()
             self.close_connection = QtWidgets.QPushButton("Close the connection", self)
             self.get_file = QtWidgets.QPushButton("Get the file", self)
+            self.resume = QtWidgets.QPushButton("Resume", self)
             self.close_connection.move(280, 50)
             self.get_file.move(500, 50)
+            self.resume.move(500, 125)
             self.close_port.clicked.connect(self.close_port_click)
             self.close_connection.clicked.connect(self.close_connection_click)
             self.get_file.clicked.connect(self.get_file_click)
+            self.resume.clicked.connect(self.resume_click)
             self.close_connection.show()
             self.get_file.show()
+            self.resume.show()
         else:
             self.error_dialog = QtWidgets.QErrorMessage()
             self.error_dialog.showMessage('Something went wrong!')
+
+    # resume button
+    def resume_click(self):
+        self.type0("transmitResume")
 
     # get the file button
     def get_file_click(self):
