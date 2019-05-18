@@ -1,0 +1,8 @@
+2019/05/18 17:03:47 &{COM2 1152000 text.txt }
+2019/05/18 17:03:47 OK!	   SLAVE init
+2019/05/18 17:03:50 OK!	 command wrote  OpenSlave
+2019/05/18 17:03:50 OK!	   Port SLAVE opened
+2019/05/18 17:03:50 	+ Mutex connectInitSlave
+2019/05/18 17:04:03 OK!	   message received, val=ConnIn status=0 tp = 33
+2019/05/18 17:04:03 	- Mutex connectInitSlave status = 0
+2019/05/18 17:05:21 OK!	 command wrote  OpenSlave

@@ -1,10 +1,10 @@
 # go run test.go socket.go common.go hamming.go
 
 import sys
+import threading
 from PyQt5 import QtWidgets
 import socket
 import json
-import pickle
 
 conf = {
     "Name": "Hello my sister",
@@ -29,9 +29,10 @@ def read_json():
 
 # class Settings (второе диалоговое окно)
 class Second(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, sock):
         super(Second, self).__init__()
         self.setWindowTitle('Settings')
+        self.sock = sock
 
     # функция для кнопки Settings, открытие 2 диалогового окна
     def settings_on_click(self):
@@ -80,17 +81,16 @@ class Second(QtWidgets.QWidget):
         self.file_dir.setText(str(dir))
 
     def type1(self):
-        self.sock = socket.socket()
-        self.sock.connect(('localhost', 8888))
         msg = {
             "Type": 1,
             "Cnf": conf,
             "Data": ""
         }
         data = json.dumps(msg)
+        print(data)
         self.sock.sendall(bytes(data, 'utf-8'))
-        self.sock.close()
-
+        self.sock.sendall(b"\n")
+        
 
 # class главного окна
 class MainWindow(QtWidgets.QWidget):
@@ -100,8 +100,38 @@ class MainWindow(QtWidgets.QWidget):
         self.setWindowTitle('Master')
         self.resize(700, 200)
         self.UI()
+        #self.sock = socket.socket()
+        #self.sock.connect(('localhost', 8888))
         # read_json()
+        self.sock = socket.socket()
+        self.sock.connect(('localhost', 8888))
+        t = threading.Thread(target=self.reader)
+        t.start()
 
+    def reader(self):
+        while True:
+            data = self.sock.recv(1024)
+            if not data:
+                break
+            parsed_data = json.loads(data)
+            if parsed_data["Type"]==1:
+                conf["Name"] = parsed_data["Cnf"]["Name"]
+                conf["Baud"] = parsed_data["Cnf"]["Baud"]
+                conf["FileName"] = parsed_data["Cnf"]["FileName"]
+                conf["FileDir"] = parsed_data["Cnf"]["FileDir"]
+                #print("conf modified")
+            if parsed_data["Type"]==0:
+                if parsed_data["Data"]=="Close":#Закрытие порта
+                    self.onClose()
+                if parsed_data["Data"]=="RST":#Разрыв соединения
+                    self.onRST()
+                if parsed_data["Data"]=="ConnectOK":#Успешное подключение
+                    self.confirm_connection()
+                if parsed_data["Data"]=="transmitRST":#Разрыв во время передачи TODO ПОКА НЕ ВПИСАНА В GOLANG
+                    self.get_file_RST()
+                if parsed_data["Data"]=="packetLoss":#Началась потеря пакетов
+                    self.packet_loss()
+         
     # задание вида главного диалогового окна
     def UI(self):
         self.open_port = QtWidgets.QPushButton("Open the port", self)
@@ -109,20 +139,21 @@ class MainWindow(QtWidgets.QWidget):
         self.open_port.move(300, 50)
         self.settings.move(300, 125)
         self.open_port.clicked.connect(self.port_on_click)
-        self.w = Second()
+        self.w = Second(self.sock)
         self.settings.clicked.connect(self.w.settings_on_click)
 
     def type0(self, str):
-        self.sock = socket.socket()
-        self.sock.connect(('localhost', 8888))
         msg = {
             "Type": 0,
             "Cnf": conf,
             "Data": str
         }
         data = json.dumps(msg)
+        print(data)
+        #self.sock.send(bytes(data, 'utf-8'))
         self.sock.sendall(bytes(data, 'utf-8'))
-        self.sock.close()
+        self.sock.sendall(b"\n")
+        #self.sock.close()
 
     # Open port button
     def port_on_click(self):
@@ -145,6 +176,9 @@ class MainWindow(QtWidgets.QWidget):
     # close the port button
     def close_port_click(self):
         self.type0("Close")
+        self.onClose()
+
+    def onClose(self):
         self.open_port.show()
         if self.open_connection.isVisible():
             self.close_port.hide()
@@ -176,6 +210,8 @@ class MainWindow(QtWidgets.QWidget):
             self.error_dialog = QtWidgets.QErrorMessage()
             self.error_dialog.showMessage('Something went wrong!')
 
+    def confirm_connection(self):
+        pass
     # resume button
     def resume_click(self):
         self.type0("transmitResume")
@@ -183,14 +219,22 @@ class MainWindow(QtWidgets.QWidget):
     # get the file button
     def get_file_click(self):
         self.type0("transmitInit")
-
+    def get_file_RST(self):
+        pass
     # close the connection button
     def close_connection_click(self):
         self.type0("ConnEnd")
+        self.onRST()
+
+    def onRST(self):
         self.open_port.show()
         self.close_port.hide()
         self.close_connection.hide()
-        self.get_file.hide()
+        self.get_file.hide()    
+
+    def packet_loss(self):
+        pass
+    
 
 def main():
     app = QtWidgets.QApplication(sys.argv)

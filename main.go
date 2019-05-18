@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"sync"
 )
 
@@ -20,8 +21,18 @@ func goMaster() {
 	fmt.Println("OK!\t   MASTER init")
 	mu := &sync.Mutex{}
 	go manageHandler(&self, mu, cnf, cnfname)
-	CLIParser(self.ManageStream)
-	return
+	//CLIParser(self.ManageStream)
+	listner, err := net.Listen("tcp", ":8888")
+	fmt.Println("listener 8888 started")
+	if err != nil {
+		panic(err)
+	}
+	conn, err := listner.Accept()
+	if err != nil {
+		panic(err)
+	}
+	self.callBack = &conn
+	testHandleConnection(conn, "MASTER", self.ManageStream, cnf)
 }
 func goSlave() {
 	cnfname := "cnf_slave.json"
@@ -31,8 +42,18 @@ func goSlave() {
 	fmt.Println("OK!\t   SLAVE init")
 	mu := &sync.Mutex{}
 	go manageHandler(&self, mu, cnf, cnfname)
-	CLIParser(self.ManageStream)
-
+	//CLIParser(self.ManageStream)
+	listner, err := net.Listen("tcp", ":8889")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("listener 8889 started")
+	conn, err := listner.Accept()
+	if err != nil {
+		panic(err)
+	}
+	self.callBack = &conn
+	testHandleConnection(conn, "SLAVE ", self.ManageStream, cnf)
 }
 
 /*func simpleSend(self *conn) {

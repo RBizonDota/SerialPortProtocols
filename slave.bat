@@ -1,1 +1,1 @@
-go run main.go hamming.go common.go slave.go
+go run main.go hamming.go common.go slave.go socket.go

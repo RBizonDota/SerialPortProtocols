@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/bits"
+	"net"
 	"os"
 	"strconv"
 	"sync"
@@ -65,6 +66,7 @@ type conn = struct {
 	ManageStream chan string
 	Receive      chan string
 	Send         chan string
+	callBack     *net.Conn
 }
 
 func NewConn() conn {
@@ -155,10 +157,14 @@ func RSTDetector(port *conn, d *int, mydata string) (string, int) {
 	readMes(port.Port, in)
 	for {
 		if *d > 4 {
-			//panic("")
 			fmt.Println("connection broken, didn't get acc")
-			//val := <-readMes(port.Port)
-			//fmt.Println("OOOOOPS! " + val)
+			tcpMsg := tcpMessage{
+				Type: 0,
+				Cnf:  CNF{},
+				Data: "RST",
+			}
+			str, _ := json.Marshal(tcpMsg)
+			(*port.callBack).Write(str)
 			port.ConnStatus = 2
 			return "-1", FAILED
 		}
@@ -170,6 +176,13 @@ func RSTDetector(port *conn, d *int, mydata string) (string, int) {
 		case <-timer.C:
 			fmt.Println("FAIL!\t timeout happend")
 			timer.Stop()
+			tcpMsg := tcpMessage{
+				Type: 0,
+				Cnf:  CNF{},
+				Data: "packetLoss",
+			}
+			str, _ := json.Marshal(tcpMsg)
+			(*port.callBack).Write(str)
 			(*d)++
 		case val := <-in:
 			if !timer.Stop() {
@@ -191,16 +204,11 @@ func SyncSend(port *conn, mydata string, tp string, answer bool) (status int) {
 	binary.LittleEndian.PutUint64(msgBytes, uint64(data))
 
 	var d = 0
-	var val string
+	//var val string
 	if answer {
-		val, status = RSTDetector(port, &d, string(msgBytes))
+		_, status = RSTDetector(port, &d, string(msgBytes))
 	} else {
 		status = <-sendMes(port.Port, string(msgBytes))
-	}
-	if val == ACC {
-
-	} else {
-		//передача данных в поток
 	}
 	//fmt.Println("SyncSend Passed")
 	return status
@@ -218,6 +226,14 @@ func SyncRead(port *conn, initOnly bool) (val string, tp byte, status int) {
 		fmt.Println("FAIL!\t timeout happend, RST")
 		timer.Stop()
 		//разрыв соединения
+		tcpMsg := tcpMessage{
+			Type: 0,
+			Cnf:  CNF{},
+			Data: "RST",
+		}
+		str, _ := json.Marshal(tcpMsg)
+		(*port.callBack).Write(str)
+
 		port.ConnStatus = NOTCONNECTED
 		return "-1", 0, FAILED
 	case val := <-in:
@@ -347,6 +363,13 @@ func connectInitMaster(self *conn, mu *sync.Mutex) int {
 	} else {
 		return FAILED
 	}
+	tcpMsg := tcpMessage{
+		Type: 0,
+		Cnf:  CNF{},
+		Data: "ConnectOK",
+	}
+	str, _ := json.Marshal(tcpMsg)
+	(*self.callBack).Write(str)
 	self.ConnStatus = OK
 	go func() { //Синхросигналы
 		//	fmt.Println("OK!\t Process init")
@@ -372,6 +395,13 @@ func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	mu.Unlock()
 	fmt.Println("\t- Mutex connectInitSlave status = " + strconv.Itoa(status))
 	if status != OK {
+		tcpMsg := tcpMessage{
+			Type: 0,
+			Cnf:  CNF{},
+			Data: "Close",
+		}
+		str, _ := json.Marshal(tcpMsg)
+		(*self.callBack).Write(str)
 		fmt.Println("FAIL!\t Something wrong in connectInitSlave, read status=" + strconv.Itoa(status))
 		return
 	}

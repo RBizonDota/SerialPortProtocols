@@ -19,51 +19,44 @@ type tcpMessage struct {
 }
 
 //self, cnf
-func handleConnection(conn net.Conn, self *conn, mycnf *CNF) {
+func testHandleConnection(conn net.Conn, prefix string, manageChan chan string, cnf *CNF) {
 	name := conn.RemoteAddr().String()
-
 	fmt.Printf("%+v connected\n", name)
-	data, err := json.Marshal(&tcpMessage{
-		Type: socketOnly,
-		Cnf:  *mycnf,
-		Data: "cnf",
-	})
-	if err != nil {
-		fmt.Println("FAIL!\t Couldn't marshal tcpMessage")
-	}
-	conn.Write(data)
 
 	defer conn.Close()
+	tcpMsg := tcpMessage{
+		Type: 1,
+		Cnf:  *cnf,
+		Data: "",
+	}
+	str, _ := json.Marshal(tcpMsg)
+	conn.Write(str)
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		text := scanner.Text()
-		if text == "OUT" {
-			fmt.Println(name, "disconnected")
+		if text == "Exit" {
+			//Для выхода из цикла, в рамках общения не используется
+			fmt.Println(prefix, name, "disconnected")
 			break
 		} else if text != "" {
-			fmt.Println(name, "enters", text)
-			msg := &tcpMessage{}
-			err := json.Unmarshal([]byte(text), msg)
+			fmt.Println(prefix, name, "enters", text)
+			mydata := tcpMessage{}
+			err := json.Unmarshal([]byte(text), &mydata)
 			if err != nil {
-				fmt.Println("FAIL!\t Couldn't unmarshal tcpMessage")
+				fmt.Println(prefix, name, "error while parsing tcpMessage")
 			} else {
-				if msg.Type == manageMSG {
-					self.ManageStream <- msg.Data
-					if msg.Data == "SetCNF" {
-						data, err := json.Marshal(msg.Cnf)
-						if err != nil {
-							fmt.Println("FAIL!\t Couldn't marshal CNF")
-						} else {
-							self.ManageStream <- string(data)
-						}
-					}
-				} else if msg.Type == sendMSG {
-					self.Send <- msg.Data
-				} else {
+				fmt.Println(prefix, name, "OK parsing tcpMessage")
+				switch mydata.Type {
+				case 0:
+					manageChan <- mydata.Data
+				case 1:
+					manageChan <- "SetCNF"
+					str, _ := json.Marshal(mydata.Cnf)
+					manageChan <- string(str)
+					//TODO нет обработки асинхронной отправки пакетов
 				}
 			}
-			//conn.Write([]byte("You enter " + text + "\n\r"))
 		}
 	}
 }

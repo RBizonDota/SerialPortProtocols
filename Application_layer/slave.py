@@ -2,7 +2,7 @@ import sys
 from PyQt5 import QtWidgets
 import socket
 import json
-
+import threading
 conf = {
     "Name": "Hello my brother",
     "Baud": 11111,
@@ -13,9 +13,10 @@ conf = {
 
 # class Settings (второе диалоговое окно)
 class Second(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, sock):
         super(Second, self).__init__()
         self.setWindowTitle('Settings')
+        self.sock = sock
 
     # функция для кнопки Settings, открытие 2 диалогового окна
     def settings_on_click(self):
@@ -53,14 +54,12 @@ class Second(QtWidgets.QWidget):
     # функция для кнопки Submit во 2 диалоговом окне
     def submit_on_click(self):
         conf["Name"] = self.port_name.text()
-        conf["Baud"] = self.baud.text()
+        conf["Baud"] = int(self.baud.text())
         conf["FileName"] = self.choose_file.text()
         self.type1()
         self.hide()
 
     def type1(self):
-        self.sock = socket.socket()
-        self.sock.connect(('localhost', 8889))
         msg = {
             "Type": 1,
             "Cnf": conf,
@@ -68,8 +67,9 @@ class Second(QtWidgets.QWidget):
         }
         data = json.dumps(msg)
         self.sock.sendall(bytes(data, 'utf-8'))
-        self.sock.close()
-
+        self.sock.sendall(b"\n")
+        
+        
     # выбор файла
     def file_on_click(self):
         fname = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '/home')[0]
@@ -81,14 +81,41 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setWindowTitle('Slave')
+        self.sock = socket.socket()
+        self.sock.connect(('localhost', 8889))
+        t = threading.Thread(target=self.reader)
+        t.start()
         self.UI()
-
+        
+    def reader(self):
+        while True:
+            data = self.sock.recv(1024)
+            if not data:
+                break
+            parsed_data = json.loads(data)
+            if parsed_data["Type"]==1:
+                conf["Name"] = parsed_data["Cnf"]["Name"]
+                conf["Baud"] = parsed_data["Cnf"]["Baud"]
+                conf["FileName"] = parsed_data["Cnf"]["FileName"]
+                conf["FileDir"] = parsed_data["Cnf"]["FileDir"]
+                #print("conf modified")
+            if parsed_data["Type"]==0:
+                if parsed_data["Data"]=="Close":#Закрытие порта
+                    self.onClose()
+                if parsed_data["Data"]=="RST":#Разрыв соединения
+                    self.onRST()
+                if parsed_data["Data"]=="ConnectOK":#Успешное подключение
+                    self.confirm_connection()
+                if parsed_data["Data"]=="transmitRST":#Разрыв во время передачи TODO ПОКА НЕ ВПИСАНА В GOLANG
+                    self.get_file_RST()
+                if parsed_data["Data"]=="packetLoss":#Началась потеря пакетов
+                    self.packet_loss()
     # задание сокета и передача данных
-    def read_json(self):
-        data = self.sock.recv(1024)
-        parsed_data = json.loads(data)
-        if parsed_data['Type'] == 1:
-            self.conf = parsed_data['Cnf']
+    #def read_json(self):
+    #    data = self.sock.recv(1024)
+    #    parsed_data = json.loads(data)
+    #    if parsed_data['Type'] == 1:
+    #        self.conf = parsed_data['Cnf']
 
     # задание вида главного диалогового окна
     def UI(self):
@@ -97,7 +124,7 @@ class MainWindow(QtWidgets.QWidget):
         self.open_port.move(200, 50)
         self.settings.move(200, 100)
         self.open_port.clicked.connect(self.port_on_click)
-        self.w = Second()
+        self.w = Second(self.sock)
         self.settings.clicked.connect(self.w.settings_on_click)
 
     # функция для кнопки Open port
@@ -120,8 +147,6 @@ class MainWindow(QtWidgets.QWidget):
         self.close_port.hide()
 
     def type0(self, str):
-        self.sock = socket.socket()
-        self.sock.connect(('localhost', 8889))
         msg = {
             "Type": 0,
             "Cnf": conf,
@@ -129,8 +154,23 @@ class MainWindow(QtWidgets.QWidget):
         }
         data = json.dumps(msg)
         self.sock.sendall(bytes(data, 'utf-8'))
-        self.sock.close()
+        self.sock.sendall(b"\n")
+        
+    def packet_loss(self):
+        pass
+    def onRST(self):
+        pass
+    
+    def get_file_RST(self):
+        pass    
 
+    def onClose(self):
+        self.open_port.show()
+        self.close_port.hide()
+
+    def confirm_connection(self):
+        pass
+    
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
