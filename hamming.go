@@ -27,6 +27,7 @@ const (
 	transAnsInitCadr byte = 122
 	transEndCadr     byte = 144
 	defaultCadr      byte = 42
+	transResumeCadr  byte = 55
 )
 
 func CheckError(err error) { //remake
@@ -191,160 +192,6 @@ func ToBytes(msg int64) ([]byte, byte) {
 	return sliceBytes, frameType
 }
 
-/*func main() {
-	//var tmpArr []byte
-
-	mychan := make(chan int64, 10)
-	//-------------проверка получения------------------------
-	go Getter(mychan)
-	//-------------------------------------------------------
-
-	//TODO Отправка флага начала передачи, длины названия в кадрах, длины тела в кадрах
-	//TODO (кадр флаг 1-м байтом, два последних - длина названия и длина тела)
-	//--------------Отправка файла----------------
-	start := time.Now()
-	var fileSize, nameSize, i, bytesToRead int64
-	var nameCadrSize int16
-	var fileCadrSize int32
-	file, err := os.Open(DataFileName)
-	CheckError(err)
-
-	stat, err := file.Stat()
-	CheckError(err)
-	fileSize = stat.Size()
-	nameSize = int64(len(DataFileName))
-	bytesToRead = 6
-	fileCadrSize = int32(fileSize / bytesToRead)
-	if int(fileSize)%int(bytesToRead) != 0 {
-		fileCadrSize++
-	}
-	nameCadrSize = int16(nameSize / bytesToRead)
-	if int(nameSize)%int(bytesToRead) != 0 {
-		nameCadrSize++
-	}
-	fmt.Println("fileSize = " + strconv.Itoa(int(fileSize)) + ", fileCadrSize = " + strconv.Itoa(int(fileCadrSize)))
-	fmt.Println("nameSize = " + strconv.Itoa(int(nameSize)) + ", nameCadrSize = " + strconv.Itoa(int(nameCadrSize)))
-	//----------------------Инициализирующее сообщение---------------------------
-	initMsg := GetInitMsg(fileCadrSize, nameCadrSize)
-	dataInBits := ToBits(initMsg)
-	codedInitMsg := Code(dataInBits, bits.Len(uint(dataInBits)))
-	mychan <- codedInitMsg
-
-	//----------------------Передача названия------------------------------------
-	nameBytes := []byte(DataFileName)
-	for len(nameBytes)%int(bytesToRead) != 0 { //TODO переписать, неэффективно
-		nameBytes = append(nameBytes, 0)
-	}
-	//fmt.Printf("nameBytes: %b\n", nameBytes)
-
-	for i = 0; i < nameSize; i += bytesToRead {
-		nameSlice := AddFrameType(nameBytes[i:i+bytesToRead], "info")
-		//fmt.Printf("nameSlice: %b\n", nameSlice)
-		dataInBits := ToBits(nameSlice)
-		codedName := Code(dataInBits, bits.Len(uint(dataInBits)))
-		mychan <- codedName
-	}
-
-	//------------------Передача текста из файла---------------------------------
-	for i = 0; i < fileSize; i += bytesToRead {
-		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
-		sliceOfBytes = AddFrameType(sliceOfBytes, "info")
-		dataInBits := ToBits(sliceOfBytes)
-		//fmt.Printf("dataBits: %064b\n", dataInBits)
-		//fmt.Printf("dataBitsLen: %d\n", bits.Len(uint(dataInBits)))
-		codedMsg := Code(dataInBits, bits.Len(uint(dataInBits)))
-		//fmt.Printf("codedMsg: %064b\n\n", codedMsg)
-		mychan <- codedMsg
-	}
-	//TODO Отправка флага конца передачи
-	close(mychan)
-	time.Sleep(time.Second)
-	fmt.Println(time.Since(start))
-
-	//Получение initMsg - в Getter
-	//----------------Получение названия---------------------
-	/*var receivedName []byte
-	var fileName string
-	for i = 0; i < nameSize; i += bytesToRead {
-		fileNamePart := <-mychan
-		decoded, _, _ := Decode(fileNamePart, bits.Len(uint(fileNamePart)))
-		//проверка frameType и valid?
-		//fmt.Printf("name: decoded:%08b, frameType:%d, valid:%t\n", decoded, frameType, valid)
-		receivedName = append(receivedName, decoded...)
-	}
-	n := bytes.Index(receivedName, []byte{0})
-	fileName = string(receivedName[:n]) //без конечных нулей
-	fmt.Printf("Received fileName: %s\n", fileName)
-
-	//---------------Получение файла------------------------
-	var fileTextBytes []byte
-	for i = 0; i < fileSize; i += bytesToRead {
-		receivedStr := <-mychan
-		decoded, _, _ := Decode(receivedStr, bits.Len(uint(receivedStr)))
-		//проверка frameType и valid?
-		fileTextBytes = append(fileTextBytes, decoded...)
-	}
-	fmt.Printf("Received fileText: %s\n", string(fileTextBytes))
-	//------------------Запись в файл-------------------------
-	m := bytes.Index(fileTextBytes, []byte{0}) //??????
-	DataToFile(fileName, fileTextBytes[:m])    //???????????
-}*/
-
-/*func Getter(mychan chan int64) {
-	//tmpArr := make([]byte, 0, 1)
-	//TODO Обработка не закрытия канала, а флага начала и конца передачи
-	msg, val := <-mychan
-	if !val {
-		fmt.Println("ERROR!!! chanal closed")
-	}
-	//TODO Анализ типа кадра
-	decoded, _, _ := Decode(msg, bits.Len(uint(56)))
-	//fmt.Printf("Init decoded:%08b, frameType:%d, valid:%t\n", decoded, frameType, valid)
-	fileSizeSlice := decoded[0:4]
-	nameSizeSlice := decoded[4:6]
-	fileSize := binary.LittleEndian.Uint32(fileSizeSlice)
-	nameSize := binary.LittleEndian.Uint16(nameSizeSlice)
-	fmt.Printf("fileSize: %d\n", fileSize)
-	fmt.Printf("nameSize: %d\n", nameSize)
-
-	var receivedName []byte
-	var fileName string
-	for i := 0; i < int(nameSize); i++ {
-		fileNamePart := <-mychan
-		decoded, _, _ := Decode(fileNamePart, bits.Len(uint(fileNamePart)))
-		//проверка frameType и valid?
-		receivedName = append(receivedName, decoded...)
-	}
-	fmt.Println(string(receivedName))
-	n := bytes.Index(receivedName, []byte{0})
-	if n != -1 {
-		fileName = string(receivedName[:n]) //без конечных нулей
-	} else {
-		fileName = string(receivedName)
-	}
-	fmt.Printf("Received fileName: %s\n", fileName)
-
-	//---------------Получение файла------------------------
-	var fileTextBytes []byte
-	for i := 0; i < int(fileSize); i++ {
-		receivedStr := <-mychan
-		decoded, _, _ := Decode(receivedStr, bits.Len(uint(receivedStr)))
-		//проверка frameType и valid?
-		fileTextBytes = append(fileTextBytes, decoded...)
-	}
-	//fmt.Printf("Received fileText: %s\n", string(fileTextBytes))
-	//------------------Запись в файл-------------------------
-	//m := bytes.Index(fileTextBytes, []byte{0})
-	//fmt.Println(string(fileTextBytes[:m]))
-	//DataToFile(fileName, fileTextBytes[:m]) //без конечных нулей
-	DataToFile(fileName, fileTextBytes)
-	//fmt.Printf("decoded:%08b, valid:%t\n\n", decoded, valid)
-	//tmpArr = append(tmpArr, decoded...)
-	//fmt.Println(tmpArr)
-	//fmt.Printf("Text: %s\n\n", string(tmpArr))
-	//DataToFile("Test.txt", tmpArr)
-}*/
-
 //DataToFile true - все хорошо,false - возникла ошибка; ТРЕБУЕТ СУЩЕСТВОВАНИЯ ДИРЕКТОРИИ!!!
 func DataToFile(filename string, body []byte, dirname string) bool {
 	if dirname == "" {
@@ -382,8 +229,44 @@ func delEndZeros(data []byte) []byte {
 	for i := len(data) - 1; i > -1; i-- {
 		//fmt.Println("i = " + strconv.Itoa(i))
 		if data[i] != 0 {
-			return data[:i]
+			return data[:i+1]
 		}
 	}
 	return nil
+}
+
+func CreateFile(filename string, dirname string) bool {
+	if dirname == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return false
+	}
+	file, err := os.Create(dirname + filename)
+	if err != nil {
+		fmt.Println("ERROR!!!   Unable to create file")
+		fmt.Println(err.Error())
+		return false
+	}
+	fmt.Println(filename + " created")
+	defer file.Close()
+	return true
+}
+
+func AddDataToFile(filename string, body []byte, dirname string) bool {
+	if dirname == "" {
+		fmt.Println("ERROR!!!   dirname not set")
+		return false
+	}
+	file, err := os.OpenFile(dirname+filename, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERROR!!!   Unable to open file")
+		fmt.Println(err.Error())
+		return false
+	}
+	defer file.Close()
+	_, err = file.Write(body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Println(len(body))
+	return true
 }

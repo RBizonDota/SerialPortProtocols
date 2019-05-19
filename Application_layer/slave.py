@@ -134,7 +134,7 @@ class MainWindow(QtWidgets.QWidget):
     # функция для кнопки Open port
     def port_on_click(self):
         if self.open_port.clicked:
-            self.type0("Open")
+            self.type0("OpenSlave")
             self.open_port.hide()
             self.close_port = QtWidgets.QPushButton("Close the port", self)
             self.close_port.move(180, 50)
