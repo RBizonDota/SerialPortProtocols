@@ -16,6 +16,8 @@ class Second(QtWidgets.QWidget):
     def __init__(self, sock):
         super(Second, self).__init__()
         self.setWindowTitle('Settings')
+        self.setStyleSheet(open("style.css", "r").read())
+        self.resize(650, 270)
         self.sock = sock
 
     # функция для кнопки Settings, открытие 2 диалогового окна
@@ -24,29 +26,30 @@ class Second(QtWidgets.QWidget):
         self.port_name.move(120, 20)
         self.port_name.setText(conf["Name"])
         self.port_name.resize(280, 30)
-        self.label_port_name = QtWidgets.QLabel('Port Name', self)
-        self.label_port_name.move(20, 30)
+        self.label_port_name = QtWidgets.QLabel('Port Name', self)        
+        self.label_port_name.move(20, 25)
 
         self.baud = QtWidgets.QLineEdit(self)
         self.baud.setText(str(conf["Baud"]))
         self.baud.move(120, 80)
         self.baud.resize(280, 30)
         self.label_baud = QtWidgets.QLabel('Baud', self)
-        self.label_baud.move(20, 90)
+        self.label_baud.move(20, 85)
 
         self.file_name = QtWidgets.QLineEdit(self)
         self.file_name.setText(conf["FileName"])
         self.file_name.move(120, 140)
         self.file_name.resize(280, 30)
         self.label_file_name = QtWidgets.QLabel('File Name', self)
-        self.label_file_name.move(20, 150)
+        self.label_file_name.move(20, 145)
+
 
         self.choose_file = QtWidgets.QPushButton("Choose the file", self)
-        self.choose_file.move(400, 140)
+        self.choose_file.move(450, 130)
         self.choose_file.clicked.connect(self.file_on_click)
 
         self.submit = QtWidgets.QPushButton('Submit', self)
-        self.submit.move(400, 200)
+        self.submit.move(475, 200)
         self.submit.clicked.connect(self.submit_on_click)
 
         self.show()
@@ -81,6 +84,7 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setWindowTitle('Slave')
+        self.setStyleSheet(open("style.css", "r").read())
         self.sock = socket.socket()
         self.sock.connect(('localhost', 8889))
         t = threading.Thread(target=self.reader)
@@ -121,8 +125,8 @@ class MainWindow(QtWidgets.QWidget):
     def UI(self):
         self.open_port = QtWidgets.QPushButton("Open the port", self)
         self.settings = QtWidgets.QPushButton("Settings", self)
-        self.open_port.move(200, 50)
-        self.settings.move(200, 100)
+        self.open_port.move(180, 50)
+        self.settings.move(200, 150)
         self.open_port.clicked.connect(self.port_on_click)
         self.w = Second(self.sock)
         self.settings.clicked.connect(self.w.settings_on_click)
@@ -133,7 +137,7 @@ class MainWindow(QtWidgets.QWidget):
             self.type0("Open")
             self.open_port.hide()
             self.close_port = QtWidgets.QPushButton("Close the port", self)
-            self.close_port.move(200, 50)
+            self.close_port.move(180, 50)
             self.close_port.clicked.connect(self.close_port_click)
             self.close_port.show()
         else:

@@ -32,6 +32,8 @@ class Second(QtWidgets.QWidget):
     def __init__(self, sock):
         super(Second, self).__init__()
         self.setWindowTitle('Settings')
+        self.setStyleSheet(open("style.css", "r").read())
+        self.resize(650, 270)
         self.sock = sock
 
     # функция для кнопки Settings, открытие 2 диалогового окна
@@ -41,28 +43,28 @@ class Second(QtWidgets.QWidget):
         self.port_name.move(120, 20)
         self.port_name.resize(280, 30)
         self.label_port_name = QtWidgets.QLabel('Port Name', self)
-        self.label_port_name.move(20, 30)
+        self.label_port_name.move(20, 25)
 
         self.baud = QtWidgets.QLineEdit(self)
         self.baud.setText(str(conf["Baud"]))
         self.baud.move(120, 80)
         self.baud.resize(280, 30)
         self.label_baud = QtWidgets.QLabel('Baud', self)
-        self.label_baud.move(20, 90)
+        self.label_baud.move(20, 85)
 
         self.file_dir = QtWidgets.QLineEdit(self)
         self.file_dir.setText(conf["FileDir"])
         self.file_dir.move(120, 140)
         self.file_dir.resize(280, 30)
         self.label_file_dir = QtWidgets.QLabel('File Dir', self)
-        self.label_file_dir.move(20, 150)
+        self.label_file_dir.move(20, 145)
 
         self.choose_file = QtWidgets.QPushButton("Choose the dir", self)
-        self.choose_file.move(400, 140)
+        self.choose_file.move(450, 130)
         self.choose_file.clicked.connect(self.dir_on_click)
 
         self.submit = QtWidgets.QPushButton('Submit', self)
-        self.submit.move(400, 200)
+        self.submit.move(475, 200)
         self.submit.clicked.connect(self.submit_on_click)
 
         self.show()
@@ -98,10 +100,11 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setWindowTitle('Master')
-        self.resize(700, 200)
+        self.resize(900, 350)
         #self.sock = socket.socket()
         #self.sock.connect(('localhost', 8888))
         # read_json()
+        self.setStyleSheet(open("style.css", "r").read())
         self.sock = socket.socket()
         self.sock.connect(('localhost', 8888))
         t = threading.Thread(target=self.reader)
@@ -140,8 +143,8 @@ class MainWindow(QtWidgets.QWidget):
         self.status.setText("Initial state")
         self.status.move(300, 25)
         self.status.show()
-        self.open_port.move(300, 50)
-        self.settings.move(300, 125)
+        self.open_port.move(385, 100)
+        self.settings.move(400, 200)
         self.open_port.clicked.connect(self.port_on_click)
         self.w = Second(self.sock)
         self.settings.clicked.connect(self.w.settings_on_click)
@@ -174,8 +177,8 @@ class MainWindow(QtWidgets.QWidget):
             self.open_port.hide()
             self.close_port = QtWidgets.QPushButton("Close the port", self)
             self.open_connection = QtWidgets.QPushButton("Open the connection", self)
-            self.close_port.move(100, 50)
-            self.open_connection.move(400, 50)
+            self.close_port.move(200, 100)
+            self.open_connection.move(500, 100)
             self.close_port.clicked.connect(self.close_port_click)
             self.open_connection.clicked.connect(self.open_connection_click)
             self.close_port.show()
@@ -189,6 +192,7 @@ class MainWindow(QtWidgets.QWidget):
     def close_port_click(self):
         self.type0("Close")
         self.onClose()
+        self.resume.hide()
 
     def onClose(self):
         self.open_port.show()
@@ -214,9 +218,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def confirm_connection(self):
         self.open_connection.hide()
-        self.close_connection.move(280, 50)
-        self.get_file.move(500, 50)
-        self.resume.move(500, 125)
+        self.close_connection.move(400, 100)
+        self.get_file.move(650, 100)
+        self.resume.move(650, 200)
         self.close_connection.clicked.connect(self.close_connection_click)
         self.get_file.clicked.connect(self.get_file_click)
         self.resume.clicked.connect(self.resume_click)
@@ -250,6 +254,7 @@ class MainWindow(QtWidgets.QWidget):
         self.get_file.hide()    
         self.settings.setDisabled(False)
         self.close_port.setDisabled(False)
+        self.resume.hide()
         
 
     def packet_loss(self):
