@@ -134,6 +134,9 @@ class MainWindow(QtWidgets.QWidget):
                     self.get_file_RST()
                 if parsed_data["Data"]=="packetLoss":#Началась потеря пакетов
                     self.packet_loss()
+                if parsed_data["Data"]=="transmitOK":#Началась потеря пакетов
+                    self.confirm_transmit()
+                
          
     # задание вида главного диалогового окна
     def UI(self):
@@ -203,7 +206,8 @@ class MainWindow(QtWidgets.QWidget):
             self.close_connection.hide()
             self.get_file.hide()
             self.close_port.hide()
-
+    def confirm_transmit(self):
+        pass
     # open the connection button
     def open_connection_click(self):
         if self.open_connection.clicked:

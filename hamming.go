@@ -267,6 +267,6 @@ func AddDataToFile(filename string, body []byte, dirname string) bool {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	fmt.Println(len(body))
+	//fmt.Println(len(body))
 	return true
 }

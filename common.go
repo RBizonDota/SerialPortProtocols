@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -256,15 +257,15 @@ func SyncRead(port *conn, initOnly bool) (val string, tp byte, status int) {
 		}
 		if initOnly {
 			if tp != connInit {
-				fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(NOANSWER) + " tp = " + strconv.Itoa(int(tp)))
+				//fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(NOANSWER) + " tp = " + strconv.Itoa(int(tp)))
 				return string(decoded), tp, NOANSWER
 			}
 		} else if tp == accCadr {
-			fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(NOANSWER) + " tp = " + strconv.Itoa(int(tp)))
+			//fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(NOANSWER) + " tp = " + strconv.Itoa(int(tp)))
 			return string(decoded), tp, NOANSWER
 		}
 		sendMes(port.Port, ACC)
-		fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(OK) + " tp = " + strconv.Itoa(int(tp)))
+		//fmt.Println("OK!\t   message received, val=" + string(decoded) + " status=" + strconv.Itoa(OK) + " tp = " + strconv.Itoa(int(tp)))
 		return string(decoded), tp, OK
 	}
 	return "", 0, FAILED
@@ -499,7 +500,6 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 	fmt.Println("\t+ Mutex transmitDataMaster")
 	defer fmt.Println("\t- Mutex transmitDataMaster")
 	defer mu.Unlock()
-
 	status := SyncSend(self, transmitInit, "transinit", true)
 	if status == OK {
 		val, _, status := SyncRead(self, false)
@@ -514,6 +514,20 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		cnf.ResumeCounter.FileCadrSize = fileCadrSize
 		fmt.Printf("fileCadrSize: %d\n", fileCadrSize)
 		fmt.Printf("nameCadrSize: %d\n", nameCadrSize)
+		close := true
+		defer func() { close = false }()
+		go func() {
+			for close {
+				tcpMsg := tcpMessage{
+					Type: 1,
+					Cnf:  *cnf,
+					Data: "",
+				}
+				str, _ := json.Marshal(tcpMsg)
+				(*self.callBack).Write(str)
+				time.Sleep(time.Second / 2)
+			}
+		}()
 		for i := 0; i < int(nameCadrSize); i++ {
 			val, _, status := SyncRead(self, false)
 			if status == OK {
@@ -545,11 +559,27 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 				dataAdded := AddDataToFile(cnf.ResumeCounter.FileName, fileTextBytes, cnf.FileDir)
 				if dataAdded {
 					cnf.ResumeCounter.CurFile++
+				} else {
+					tcpMsg := tcpMessage{
+						Type: 0,
+						Cnf:  CNF{},
+						Data: "TRERROR",
+					}
+					str, _ := json.Marshal(tcpMsg)
+					(*self.callBack).Write(str)
+					return
 				}
 			} else {
 				return
 			}
 		}
+		tcpMsg := tcpMessage{
+			Type: 0,
+			Cnf:  CNF{},
+			Data: "transmitOK",
+		}
+		str, _ := json.Marshal(tcpMsg)
+		(*self.callBack).Write(str)
 		fmt.Print("ResumeCounter in Master: ")
 		fmt.Println(cnf.ResumeCounter)
 		cnf.ResumeCounter = counter{} //обнуление
@@ -669,16 +699,21 @@ func transmitResumeSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	fmt.Println("\t- Mutex transmitResumeSlave")
 }
 
-func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
+func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileNameWithPath string) {
 	mu.Lock()
 	fmt.Println("\t+ Mutex transmitDataSlave")
 	start := time.Now()
 	var fileSize, nameSize, i, bytesToRead int64
 	var nameCadrSize int16
 	var fileCadrSize int32
-	file, err := os.Open(DataFileName)
+	file, err := os.Open(DataFileNameWithPath)
 	CheckError(err)
-
+	fmt.Println([]byte(DataFileNameWithPath))
+	fmt.Println(DataFileNameWithPath)
+	arr := strings.Split(DataFileNameWithPath, "/")
+	fmt.Println(arr)
+	DataFileName := arr[len(arr)-1]
+	fmt.Println("FILENAME  ", DataFileName)
 	stat, err := file.Stat()
 	CheckError(err)
 	fileSize = stat.Size()
@@ -736,7 +771,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileName string) {
 func CLIParser(stream chan string) {
 	var res string
 	for {
-		fmt.Print("command: ")
+		//fmt.Print("command: ")
 		fmt.Scanln(&res)
 		if res == "OUT" {
 			break
@@ -783,6 +818,10 @@ func setCnf(data *CNF, cnfname string) {
 	if err != nil {
 		panic(err)
 	}
+
+	arr := strings.Split(data.FileName, "/")
+	DataFileName := arr[len(arr)-1]
+	fmt.Println("FILENAME  ", DataFileName)
 	buf, err := json.Marshal(*data)
 	if err != nil {
 		panic(err)
