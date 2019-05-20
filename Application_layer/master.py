@@ -307,6 +307,7 @@ class MainWindow(QtWidgets.QWidget):
         #self.close_port.hide()
         self.close_connection.hide()
         self.open_connection.setDisabled(False)
+        self.open_connection.show()
         self.get_file.hide()    
         self.settings.setDisabled(False)
         self.close_port.setDisabled(False)

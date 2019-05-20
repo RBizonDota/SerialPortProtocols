@@ -328,7 +328,10 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 			}
 			go connectInitSlave(self, mu, cnf)
 		case "transmitInit":
-			transmitDataMaster(self, mu, cnf)
+			ok := transmitDataMaster(self, mu, cnf)
+			if !ok {
+				setCnf(cnf, cnfname)
+			}
 		case "transmitResume":
 			transmitResumeMaster(self, mu, cnf)
 		case "ConnEnd":
@@ -343,6 +346,7 @@ func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
 			} else {
 				setCnf(res, cnfname)
 				cnf = res
+				log.Println("manageStream CNF set, cnf = ", cnf)
 			}
 		case "SetFileName":
 			data := <-self.ManageStream
@@ -495,7 +499,7 @@ func connectEndSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 	go connectInitSlave(self, mu, cnf)
 }
 
-func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
+func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 	if cnf.FileDir == "" {
 		log.Println("ERROR!!!   dirname not set")
 		tcpMsg := tcpMessage{
@@ -505,7 +509,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		}
 		str, _ := json.Marshal(tcpMsg)
 		(*self.callBack).Write(str)
-		return
+		return false
 	}
 	mu.Lock()
 	log.Println("\t+ Mutex transmitDataMaster")
@@ -529,7 +533,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 			}
 			str, _ := json.Marshal(tcpMsg)
 			(*self.callBack).Write(str)
-			return
+			return false
 		}
 		fileSizeSlice := []byte(val)[0:4]
 		nameSizeSlice := []byte(val)[4:6]
@@ -574,7 +578,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 				}
 				str, _ := json.Marshal(tcpMsg)
 				(*self.callBack).Write(str)
-				return
+				return false
 			}
 		}
 		//log.Println(DataFileNameWithPath)
@@ -590,7 +594,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 			}
 			str, _ := json.Marshal(tcpMsg)
 			(*self.callBack).Write(str)
-			return
+			return false
 		}
 		//---------------Получение файла------------------------
 		var fileTextBytes []byte
@@ -615,7 +619,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 					str, _ := json.Marshal(tcpMsg)
 					(*self.callBack).Write(str)
 					log.Println("not OK while transmiting")
-					return
+					return false
 				}
 			} else {
 				tcpMsg := tcpMessage{
@@ -626,7 +630,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 				str, _ := json.Marshal(tcpMsg)
 				(*self.callBack).Write(str)
 				log.Println("not OK while transmiting")
-				return
+				return false
 			}
 		}
 		tcpMsg := tcpMessage{
@@ -644,8 +648,16 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		}
 		str, _ = json.Marshal(tcpMsg)
 		(*self.callBack).Write(str)
+		return true
 	}
-
+	tcpMsg := tcpMessage{
+		Type: 0,
+		Cnf:  CNF{},
+		Data: "TRERROR",
+	}
+	str, _ := json.Marshal(tcpMsg)
+	(*self.callBack).Write(str)
+	return false
 }
 
 func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
