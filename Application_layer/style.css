@@ -13,6 +13,8 @@ QLineEdit {
 
 QLabel {
    color: darkred;
+   width:400px;
+   font-size: 14px;
 }
 
 QPushButton {

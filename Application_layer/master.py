@@ -136,6 +136,11 @@ class MainWindow(QtWidgets.QWidget):
                 conf["Baud"] = parsed_data["Cnf"]["Baud"]
                 conf["FileName"] = parsed_data["Cnf"]["FileName"]
                 conf["FileDir"] = parsed_data["Cnf"]["FileDir"]
+                conf["ResumeCounter"]=parsed_data["Cnf"]["ResumeCounter"]
+                if parsed_data["Data"]=="U":
+                    self.update_status(0)
+                if parsed_data["Data"]=="RU":
+                    self.update_status(self.resume_num)
                 #print("conf modified")
             if parsed_data["Type"]==0:
                 if parsed_data["Data"]=="Close":#Закрытие порта
@@ -146,11 +151,28 @@ class MainWindow(QtWidgets.QWidget):
                     self.confirm_connection()
                 if parsed_data["Data"]=="transmitRST":#Разрыв во время передачи TODO ПОКА НЕ ВПИСАНА В GOLANG
                     self.get_file_RST()
+                if parsed_data["Data"]=="TRERROR":
+                    self.transmit_error()
                 if parsed_data["Data"]=="packetLoss":#Началась потеря пакетов
                     self.packet_loss()
-                if parsed_data["Data"]=="transmitOK":#Началась потеря пакетов
+                if parsed_data["Data"]=="transmitOK":
                     self.confirm_transmit()
-                
+
+    def transmit_error(self):
+        self.status.setText("Error while transmiting")
+        self.close_port.setEnabled(True)
+        self.close_connection.setEnabled(True)
+        self.resume.setEnabled(True)
+        self.get_file.setEnabled(True)
+        self.settings.setEnabled(True)
+
+
+    def update_status(self, min_num):
+        curData = conf["ResumeCounter"]["CurName"]+conf["ResumeCounter"]["CurFile"]
+        maxData = conf["ResumeCounter"]["NameCadrSize"]+conf["ResumeCounter"]["FileCadrSize"]
+        if curData<min_num:
+            curData = min_num
+        self.status.setText("Transmiting Data transmited "+str(curData)+"/"+str(maxData)+" ("+str(int(curData/maxData*100))+"%)")
          
     # задание вида главного диалогового окна
     def UI(self):
@@ -158,6 +180,7 @@ class MainWindow(QtWidgets.QWidget):
         self.settings = QtWidgets.QPushButton("Settings", self)
         self.status = QtWidgets.QLabel("Initial state", self)
         self.status.setText("Initial state")
+        self.status.resize(400,30)
         self.status.move(300, 25)
         self.status.show()
         self.open_port.move(385, 100)
@@ -220,8 +243,15 @@ class MainWindow(QtWidgets.QWidget):
             self.close_connection.hide()
             self.get_file.hide()
             self.close_port.hide()
+
     def confirm_transmit(self):
-        pass
+        self.status.setText("File successfully transmited")
+        self.close_port.setEnabled(True)
+        self.close_connection.setEnabled(True)
+        self.resume.setEnabled(True)
+        self.get_file.setEnabled(True)
+        self.settings.setEnabled(True)
+
     # open the connection button
     def open_connection_click(self):
         if self.open_connection.clicked:
@@ -248,13 +278,21 @@ class MainWindow(QtWidgets.QWidget):
         self.open_connection.setEnabled(True)
         self.settings.setEnabled(True)
         self.close_port.setEnabled(True)
+        self.status.setText("Connected")
     # resume button
     def resume_click(self):
+        self.resume_num = conf["ResumeCounter"]["CurName"]+conf["ResumeCounter"]["CurFile"]
         self.type0("transmitResume")
 
     # get the file button
     def get_file_click(self):
         self.type0("transmitInit")
+        self.close_port.setEnabled(False)
+        self.close_connection.setEnabled(False)
+        self.resume.setEnabled(False)
+        self.get_file.setEnabled(False)
+        self.settings.setEnabled(False)
+
     def get_file_RST(self):
         pass
     # close the connection button
