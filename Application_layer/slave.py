@@ -107,7 +107,7 @@ class MainWindow(QtWidgets.QWidget):
             if not data:
                 break
             parsed_data = json.loads(data)
-            print("reader entry data = ",parsed_data)
+            #print("reader entry data = ",parsed_data)
             if parsed_data["Type"]==1:
                 conf["Name"] = parsed_data["Cnf"]["Name"]
                 conf["Baud"] = parsed_data["Cnf"]["Baud"]

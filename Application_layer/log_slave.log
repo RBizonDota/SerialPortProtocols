@@ -12500,3 +12500,45 @@
 2019/05/20 22:43:19 File i =  14634  status =  0
 2019/05/20 22:43:19 11.7090076s
 2019/05/20 22:43:19 	- Mutex transmitDataSlave
+2019/05/20 22:55:46 New day, new entry  &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text1.txt  {0 0 0 0 }}
+2019/05/20 22:55:46 OK!	   Port SLAVE opened
+2019/05/20 22:55:46 	+ Mutex connectInitSlave
+2019/05/20 22:57:03 New day, new entry  &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text1.txt  {0 0 0 0 }}
+2019/05/20 22:57:03 OK!	   Port SLAVE opened
+2019/05/20 22:57:03 	+ Mutex connectInitSlave
+2019/05/20 22:57:04 	- Mutex connectInitSlave status = 0
+2019/05/20 22:57:04 	+ Mutex connectInitSlave 2
+2019/05/20 22:57:04 	- Mutex connectInitSlave 2
+2019/05/20 22:57:04 OK!	 connection made
+2019/05/20 22:57:04 Reader Start
+2019/05/20 22:57:07 &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text1.txt  {0 0 0 0 }}
+2019/05/20 22:57:07 	+ Mutex transmitDataSlave
+2019/05/20 22:57:07 FILENAME   C:/Users/rbaybarin/Documents/Kursach/core/phys/text1.txt
+2019/05/20 22:57:07 fileSize = 14637, fileCadrSize = 2440
+2019/05/20 22:57:07 nameSize = 56, nameCadrSize = 10
+2019/05/20 22:57:10 FAIL!	 timeout happend
+2019/05/20 22:57:10 transInit answer sent
+2019/05/20 22:57:22 14.8791769s
+2019/05/20 22:57:22 	- Mutex transmitDataSlave
+2019/05/20 22:57:40 New day, new entry  &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text1.txt  {0 0 0 0 }}
+2019/05/20 22:57:40 CNF set data =  {"Name":"COM2","Baud":1152000,"FileName":"C:/Users/rbaybarin/Documents/bro.txt","FileDir":"","ResumeCounter":{"CurName":0,"NameCadrSize":0,"CurFile":0,"FileCadrSize":0,"FileName":""}}
+2019/05/20 22:57:40 manageStream CNF set, cnf =  &{COM2 1152000 C:/Users/rbaybarin/Documents/bro.txt  {0 0 0 0 }}
+2019/05/20 22:57:41 &{COM2 1152000 C:/Users/rbaybarin/Documents/bro.txt  {0 0 0 0 }}
+2019/05/20 22:57:41 	+ Mutex transmitDataSlave
+2019/05/20 22:57:41 FILENAME   C:/Users/rbaybarin/Documents/bro.txt
+2019/05/20 22:57:41 fileSize = 15, fileCadrSize = 3
+2019/05/20 22:57:41 nameSize = 36, nameCadrSize = 6
+2019/05/20 22:57:41 transInit answer sent
+2019/05/20 22:57:41 13.9492ms
+2019/05/20 22:57:41 	- Mutex transmitDataSlave
+2019/05/20 22:58:18 New day, new entry  &{COM2 1152000 C:/Users/rbaybarin/Documents/bro.txt  {0 0 0 0 }}
+2019/05/20 22:58:18 CNF set data =  {"Name":"COM2","Baud":1152000,"FileName":"C:/Users/rbaybarin/Documents/Kursach/core/phys/text.png","FileDir":"","ResumeCounter":{"CurName":0,"NameCadrSize":0,"CurFile":0,"FileCadrSize":0,"FileName":""}}
+2019/05/20 22:58:18 manageStream CNF set, cnf =  &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text.png  {0 0 0 0 }}
+2019/05/20 22:58:21 &{COM2 1152000 C:/Users/rbaybarin/Documents/Kursach/core/phys/text.png  {0 0 0 0 }}
+2019/05/20 22:58:21 	+ Mutex transmitDataSlave
+2019/05/20 22:58:21 FILENAME   C:/Users/rbaybarin/Documents/Kursach/core/phys/text.png
+2019/05/20 22:58:21 fileSize = 12540, fileCadrSize = 2090
+2019/05/20 22:58:21 nameSize = 55, nameCadrSize = 10
+2019/05/20 22:58:21 transInit answer sent
+2019/05/20 22:58:24 3.6319959s
+2019/05/20 22:58:24 	- Mutex transmitDataSlave

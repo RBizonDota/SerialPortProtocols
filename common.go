@@ -96,7 +96,7 @@ func openPort(self *conn, cnf *CNF) {
 		c := &serial.Config{Name: cnf.Name, Baud: cnf.Baud}
 		s, err := serial.OpenPort(c)
 		if err != nil {
-			log.Println("Couldn't open port with portName=" + cnf.Name + "! " + err.Error())
+			log.Println("FAIL!\t Couldn't open port with portName=" + cnf.Name + "! " + err.Error())
 			self.PortStatus = FAILED
 			return
 		}
@@ -113,7 +113,7 @@ func closePort(self *conn, cnf *CNF) {
 	if self.PortStatus == OK {
 		err := self.Port.Close()
 		if err != nil {
-			log.Println("FAIL!\t " + err.Error())
+			log.Println("FAIL!\t closing port err: " + err.Error())
 			return
 		}
 		self.PortStatus = CLOSED
@@ -131,7 +131,7 @@ func readMes(s *serial.Port, res chan string) {
 		buf := make([]byte, PACKETLEN)
 		n, err := s.Read(buf)
 		if err != nil {
-			log.Println("Couldn't read! ", err.Error())
+			log.Println("FAIL!\t Couldn't read! ", err.Error())
 			return
 		}
 		if string(buf[0]) == ACC {
@@ -156,7 +156,7 @@ func sendMes(port *serial.Port, text string) chan int {
 
 		if err != nil {
 			res <- FAILED
-			log.Println("Couldn't send! ", err.Error())
+			log.Println("FAIL!\t Couldn't send! ", err.Error())
 		}
 		res <- OK
 	}()
@@ -167,7 +167,7 @@ func RSTDetector(port *conn, d *int, mydata string) (string, int) {
 	readMes(port.Port, in)
 	for {
 		if *d > 4 {
-			log.Println("connection broken, didn't get acc")
+			log.Println("FAIL!\t RST")
 			tcpMsg := tcpMessage{
 				Type: 0,
 				Cnf:  CNF{},
@@ -234,7 +234,7 @@ func SyncRead(port *conn, initOnly bool) (val string, tp byte, status int) {
 	readMes(port.Port, in)
 	select {
 	case <-timer.C:
-		log.Println("FAIL!\t timeout happend, RST")
+		log.Println("FAIL!\t RST")
 		timer.Stop()
 		//разрыв соединения
 		tcpMsg := tcpMessage{
@@ -256,7 +256,7 @@ func SyncRead(port *conn, initOnly bool) (val string, tp byte, status int) {
 		decoded, tp, valid := Decode(int64(data), bits.Len(uint(56)))
 		//log.Println("->", string(decoded), " bytes ", decoded)
 		if !valid {
-			log.Println("NOT VALID")
+			log.Println("FAIL!\t card not valid!")
 			return "", 0, FAILED
 		}
 		if initOnly {
@@ -298,7 +298,6 @@ func manageHandler(self *conn, mu *sync.Mutex, cnf *CNF, cnfname string) {
 	//var stopChan = make(chan struct{}, 1)
 	for command := range self.ManageStream {
 		//log.Println("OK!\t manager init")
-		log.Println("New day, new entry ", cnf)
 		switch command {
 		case "ConnInit":
 			status := connectInitMaster(self, mu)
@@ -346,7 +345,6 @@ func manageHandler(self *conn, mu *sync.Mutex, cnf *CNF, cnfname string) {
 			} else {
 				setCnf(res, cnfname)
 				cnf = res
-				log.Println("manageStream CNF set, cnf = ", cnf)
 			}
 		case "SetFileName":
 			data := <-self.ManageStream
@@ -503,7 +501,7 @@ func connectEndSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 
 func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 	if cnf.FileDir == "" {
-		log.Println("ERROR!!!   dirname not set")
+		log.Println("FAIL!\t dirname not set")
 		tcpMsg := tcpMessage{
 			Type: 0,
 			Cnf:  CNF{},
@@ -527,7 +525,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 			i++
 		}
 		if status != OK {
-			log.Println("PANIC!!!!")
+			log.Println("FAIL!\t didn't get correct transmit answer cadr")
 			tcpMsg := tcpMessage{
 				Type: 0,
 				Cnf:  CNF{},
@@ -543,8 +541,6 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 		nameCadrSize := binary.LittleEndian.Uint16(nameSizeSlice)
 		cnf.ResumeCounter.NameCadrSize = nameCadrSize
 		cnf.ResumeCounter.FileCadrSize = fileCadrSize
-		log.Printf("fileCadrSize: %d\n", fileCadrSize)
-		log.Printf("nameCadrSize: %d\n", nameCadrSize)
 		close := true
 		defer func() { close = false }()
 		go func() {
@@ -561,7 +557,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 		}()
 		for i := 0; i < int(nameCadrSize); i++ {
 			val, _, status := SyncRead(self, false)
-			log.Println("Name i = ", i, " val = ", val, " status = ", status)
+			//log.Println("Name i = ", i, " val = ", val, " status = ", status)
 			if status == OK {
 				//-----обработка последней части имени - возможно переделать---
 				n := bytes.Index([]byte(val), []byte{0})
@@ -572,7 +568,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 				cnf.ResumeCounter.FileName += string(val)
 				cnf.ResumeCounter.CurName++
 			} else {
-				log.Println("not OK while transmiting")
+				log.Println("FAIL!\t couldn't transmit cadr")
 				tcpMsg := tcpMessage{
 					Type: 0,
 					Cnf:  CNF{},
@@ -588,7 +584,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 		DataFileName := arr[len(arr)-1]
 		statusBool := CreateFile(DataFileName, cnf.FileDir)
 		if !statusBool {
-			log.Println("Couldn't open file transmitData")
+			log.Println("FAIL!\t Couldn't create file transmitData")
 			tcpMsg := tcpMessage{
 				Type: 0,
 				Cnf:  CNF{},
@@ -620,7 +616,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 					}
 					str, _ := json.Marshal(tcpMsg)
 					(*self.callBack).Write(str)
-					log.Println("not OK while transmiting")
+					log.Println("FAIL!\t coudn't write data to file")
 					return false
 				}
 			} else {
@@ -631,10 +627,11 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 				}
 				str, _ := json.Marshal(tcpMsg)
 				(*self.callBack).Write(str)
-				log.Println("not OK while transmiting")
+				log.Println("FAIL!\t couldn't transmit cadr")
 				return false
 			}
 		}
+		log.Println("OK!\t   Transmit successfully ended")
 		tcpMsg := tcpMessage{
 			Type: 0,
 			Cnf:  CNF{},
@@ -652,6 +649,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 		(*self.callBack).Write(str)
 		return true
 	}
+	log.Println("FAIL!\t Couldn't send init cadr")
 	tcpMsg := tcpMessage{
 		Type: 0,
 		Cnf:  CNF{},
@@ -664,7 +662,7 @@ func transmitDataMaster(self *conn, mu *sync.Mutex, cnf *CNF) bool {
 
 func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 	if cnf.FileDir == "" {
-		log.Println("ERROR!!!   dirname not set")
+		log.Println("FAIL!\t dirname not set")
 		tcpMsg := tcpMessage{
 			Type: 0,
 			Cnf:  CNF{},
@@ -675,8 +673,8 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		return
 	}
 	mu.Lock()
-	log.Println("\t+ Mutex transmitDataMaster")
-	defer log.Println("\t- Mutex transmitDataMaster")
+	log.Println("\t+ Mutex transmitResumeMaster")
+	defer log.Println("\t- Mutex transmitResumeMaster")
 	defer mu.Unlock()
 	status := SyncSend(self, transmitInit, "transinit", true)
 	if status == OK {
@@ -688,7 +686,7 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 			i++
 		}
 		if status != OK {
-			log.Println("PANIC!!!!")
+			log.Println("FAIL!\t didn't get correct transmit answer cadr")
 			tcpMsg := tcpMessage{
 				Type: 0,
 				Cnf:  CNF{},
@@ -704,8 +702,6 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		nameCadrSize := binary.LittleEndian.Uint16(nameSizeSlice)
 		cnf.ResumeCounter.NameCadrSize = nameCadrSize
 		cnf.ResumeCounter.FileCadrSize = fileCadrSize
-		log.Printf("fileCadrSize: %d\n", fileCadrSize)
-		log.Printf("nameCadrSize: %d\n", nameCadrSize)
 		close := true
 		defer func() { close = false }()
 		go func() {
@@ -722,7 +718,7 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		}()
 		for i := 0; i < int(nameCadrSize); i++ {
 			val, _, status := SyncRead(self, false)
-			log.Println("Name i = ", i, " val = ", val, " status = ", status)
+			//log.Println("Name i = ", i, " val = ", val, " status = ", status)
 			if status == OK {
 				//-----обработка последней части имени - возможно переделать---
 				n := bytes.Index([]byte(val), []byte{0})
@@ -733,7 +729,7 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 				cnf.ResumeCounter.FileName += string(val)
 				cnf.ResumeCounter.CurName++
 			} else {
-				log.Println("not OK while transmiting")
+				log.Println("FAIL!\t couldn't transmit cadr")
 				tcpMsg := tcpMessage{
 					Type: 0,
 					Cnf:  CNF{},
@@ -749,7 +745,7 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 		DataFileName := arr[len(arr)-1]
 		statusBool := CreateFile(DataFileName, cnf.FileDir)
 		if !statusBool {
-			log.Println("Couldn't open file transmitData")
+			log.Println("FAIL!\t Couldn't create file transmitData")
 			tcpMsg := tcpMessage{
 				Type: 0,
 				Cnf:  CNF{},
@@ -781,7 +777,7 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 					}
 					str, _ := json.Marshal(tcpMsg)
 					(*self.callBack).Write(str)
-					log.Println("not OK while transmiting")
+					log.Println("FAIL!\t coudn't write data to file")
 					return
 				}
 			} else {
@@ -792,15 +788,17 @@ func transmitResumeMaster(self *conn, mu *sync.Mutex, cnf *CNF) {
 				}
 				str, _ := json.Marshal(tcpMsg)
 				(*self.callBack).Write(str)
-				log.Println("not OK while transmiting")
+				log.Println("FAIL!\t couldn't transmit cadr")
 				return
 			}
 		}
+		log.Println("OK!\t   Transmit successfully ended")
 		tcpMsg := tcpMessage{
 			Type: 0,
 			Cnf:  CNF{},
 			Data: "transmitOK",
 		}
+		log.Println("FAIL!\t Couldn't send init cadr")
 		str, _ := json.Marshal(tcpMsg)
 		(*self.callBack).Write(str)
 		cnf.ResumeCounter = counter{} //обнуление
@@ -901,7 +899,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileNameWithPath string) 
 
 	for i = 0; i < nameSize; i += bytesToRead {
 		status := SyncSend(self, string(nameBytes[i:i+bytesToRead]), "info", true)
-		log.Println("Name i = ", i, " status = ", status)
+		//log.Println("Name i = ", i, " status = ", status)
 		if status != OK {
 			return
 		}
@@ -911,7 +909,7 @@ func transmitDataSlave(self *conn, mu *sync.Mutex, DataFileNameWithPath string) 
 	for i = 0; i < fileSize; i += bytesToRead {
 		sliceOfBytes := ReadFilePart(file, i, int(bytesToRead))
 		status := SyncSend(self, string(sliceOfBytes), "info", true)
-		log.Println("File i = ", i, " status = ", status)
+		//log.Println("File i = ", i, " status = ", status)
 		if status != OK {
 			return
 		}

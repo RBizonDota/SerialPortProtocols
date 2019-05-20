@@ -91,7 +91,7 @@ class Second(QtWidgets.QWidget):
             "Data": ""
         }
         data = json.dumps(msg)
-        print(data)
+        #print(data)
         self.sock.sendall(bytes(data, 'utf-8'))
         self.sock.sendall(b"\n")
         
@@ -130,7 +130,7 @@ class MainWindow(QtWidgets.QWidget):
             if not data:
                 break
             parsed_data = json.loads(data)
-            print("reader entry data = ",parsed_data)
+            #print("reader entry data = ",parsed_data)
             if parsed_data["Type"]==1:
                 conf["Name"] = parsed_data["Cnf"]["Name"]
                 conf["Baud"] = parsed_data["Cnf"]["Baud"]
@@ -203,7 +203,7 @@ class MainWindow(QtWidgets.QWidget):
             "Data": str
         }
         data = json.dumps(msg)
-        print(data)
+        #print(data)
         #self.sock.send(bytes(data, 'utf-8'))
         self.sock.sendall(bytes(data, 'utf-8'))
         self.sock.sendall(b"\n")
