@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -22,6 +24,13 @@ func goMaster() {
 	mu := &sync.Mutex{}
 	go manageHandler(&self, mu, cnf, cnfname)
 	//CLIParser(self.ManageStream)
+	f, err := os.OpenFile("log_master.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f)
 	listner, err := net.Listen("tcp", ":8888")
 	fmt.Println("listener 8888 started")
 	if err != nil {
@@ -43,6 +52,12 @@ func goSlave() {
 	mu := &sync.Mutex{}
 	go manageHandler(&self, mu, cnf, cnfname)
 	//CLIParser(self.ManageStream)
+	f, err := os.OpenFile("log_slave.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
 	listner, err := net.Listen("tcp", ":8889")
 	if err != nil {
 		panic(err)

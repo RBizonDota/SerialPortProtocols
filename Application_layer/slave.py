@@ -1,8 +1,10 @@
 import sys
+import subprocess
 from PyQt5 import QtWidgets
 import socket
 import json
 import threading
+import time
 conf = {
     "Name": "Hello my brother",
     "Baud": 11111,
@@ -83,6 +85,14 @@ class Second(QtWidgets.QWidget):
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
+        args = 'go run ../main.go ../common.go ../slave.go ../hamming.go ../socket.go'.split()
+        self.proc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,  # If not set - python stdin used
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(10)   
         self.setWindowTitle('Slave')
         self.setStyleSheet(open("style.css", "r").read())
         self.sock = socket.socket()
@@ -131,7 +141,9 @@ class MainWindow(QtWidgets.QWidget):
         self.open_port.clicked.connect(self.port_on_click)
         self.w = Second(self.sock)
         self.settings.clicked.connect(self.w.settings_on_click)
-
+    def closeEvent(self, event):
+        self.sock.close()
+        self.proc.terminate()
     # функция для кнопки Open port
     def port_on_click(self):
         if self.open_port.clicked:

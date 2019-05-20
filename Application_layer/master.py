@@ -2,9 +2,11 @@
 
 import sys
 import threading
+import subprocess
 from PyQt5 import QtWidgets
 import socket
 import json
+import time
 
 conf = {
     "Name": "Hello my sister",
@@ -35,7 +37,7 @@ class Second(QtWidgets.QWidget):
         self.setStyleSheet(open("style.css", "r").read())
         self.resize(650, 270)
         self.sock = sock
-
+        
     # функция для кнопки Settings, открытие 2 диалогового окна
     def settings_on_click(self):
         self.port_name = QtWidgets.QLineEdit(self)
@@ -69,6 +71,9 @@ class Second(QtWidgets.QWidget):
 
         self.show()
 
+    def closeEvent(self, event):
+        self.sock.close()
+        self.proc.terminate()
     # функция для кнопки Submit во 2 диалоговом окне
     def submit_on_click(self):
         conf["Name"] = self.port_name.text()
@@ -101,9 +106,17 @@ class MainWindow(QtWidgets.QWidget):
         super(MainWindow, self).__init__()
         self.setWindowTitle('Master')
         self.resize(900, 350)
+        args = 'go run ../main.go ../common.go ../master.go ../hamming.go ../socket.go'.split()
+        self.proc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,  # If not set - python stdin used
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ) 
         #self.sock = socket.socket()
         #self.sock.connect(('localhost', 8888))
         # read_json()
+        time.sleep(10)
         self.setStyleSheet(open("style.css", "r").read())
         self.sock = socket.socket()
         self.sock.connect(('localhost', 8888))
@@ -117,6 +130,7 @@ class MainWindow(QtWidgets.QWidget):
             if not data:
                 break
             parsed_data = json.loads(data)
+            print("reader entry data = ",parsed_data)
             if parsed_data["Type"]==1:
                 conf["Name"] = parsed_data["Cnf"]["Name"]
                 conf["Baud"] = parsed_data["Cnf"]["Baud"]

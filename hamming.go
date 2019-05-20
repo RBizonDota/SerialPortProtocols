@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
+	"log"
 	"math/bits"
 	"os"
 )
@@ -24,7 +24,7 @@ const (
 	connEnd          byte = 22
 	infoCadr         byte = 240
 	transInitCadr    byte = 150
-	transAnsInitCadr byte = 122
+	transAnsInitCadr byte = 66
 	transEndCadr     byte = 144
 	defaultCadr      byte = 42
 	transResumeCadr  byte = 55
@@ -32,7 +32,7 @@ const (
 
 func CheckError(err error) { //remake
 	if err != nil {
-		fmt.Print(err)
+		log.Print(err)
 	}
 }
 
@@ -46,7 +46,7 @@ func ReadFilePart(f *os.File, placeFrom int64, numOfBytes int) []byte {
 	sliceBytes := make([]byte, numOfBytes)
 	_, err = f.Read(sliceBytes)
 	CheckError(err)
-	//fmt.Printf("sliceBytes: %s\n", string(sliceBytes))
+	//log.Printf("sliceBytes: %s\n", string(sliceBytes))
 	return sliceBytes
 }
 
@@ -82,7 +82,7 @@ func AddFrameType(bytesArr []byte, frameType string) []byte {
 
 func ToBits(sliceBytes []byte) int64 {
 	var bits int64
-	//fmt.Println(sliceBytes)
+	//log.Println(sliceBytes)
 	//TODO сделать отслеживание размера кадров (если пришло меньше 6, то дополнить 0-ми байтами)
 	for _, b := range sliceBytes {
 		bits <<= 8
@@ -104,7 +104,7 @@ func InsertZeros(msg int64) int64 {
 func Code(msg int64, msgLen int) int64 {
 	var position uint = 1
 	msg = InsertZeros(msg)
-	//fmt.Printf("withZero: %064b\n", msg)
+	//log.Printf("withZero: %064b\n", msg)
 
 	for i := 0; i < len(MainMasks); i++ {
 		controlBit := CountControlBit(msg, MainMasks[i], position)
@@ -137,7 +137,7 @@ func Decode(msg int64, msgLen int) ([]byte, byte, bool) {
 		syndr |= syndrBit
 		position *= 2
 	}
-	//fmt.Println("syndr: ", syndr)
+	//log.Println("syndr: ", syndr)
 
 	if syndr != 0 {
 		//исправить 1ую ошибку
@@ -188,28 +188,28 @@ func ToBytes(msg int64) ([]byte, byte) {
 		msg <<= 8
 	}
 
-	//fmt.Println("sliceBytes in ToBytes: ", sliceBytes)
+	//log.Println("sliceBytes in ToBytes: ", sliceBytes)
 	return sliceBytes, frameType
 }
 
 //DataToFile true - все хорошо,false - возникла ошибка; ТРЕБУЕТ СУЩЕСТВОВАНИЯ ДИРЕКТОРИИ!!!
 func DataToFile(filename string, body []byte, dirname string) bool {
 	if dirname == "" {
-		fmt.Println("ERROR!!!   dirname not set")
+		log.Println("ERROR!!!   dirname not set")
 		return false
 	}
 	file, err := os.Create(dirname + filename)
 	if err != nil {
-		fmt.Println("ERROR!!!   Unable to create file")
-		fmt.Println(err.Error())
+		log.Println("ERROR!!!   Unable to create file")
+		log.Println(err.Error())
 		return false
 	}
 	defer file.Close()
 	_, err = file.Write(body)
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err.Error())
 	}
-	fmt.Println(len(body))
+	log.Println(len(body))
 	return true
 }
 
@@ -224,10 +224,10 @@ func GetInitMsg(fileCadrSize int32, nameCadrSize int16) []byte {
 }
 
 func delEndZeros(data []byte) []byte {
-	//fmt.Println(data)
-	//fmt.Println(len(data))
+	//log.Println(data)
+	//log.Println(len(data))
 	for i := len(data) - 1; i > -1; i-- {
-		//fmt.Println("i = " + strconv.Itoa(i))
+		//log.Println("i = " + strconv.Itoa(i))
 		if data[i] != 0 {
 			return data[:i+1]
 		}
@@ -236,37 +236,38 @@ func delEndZeros(data []byte) []byte {
 }
 
 func CreateFile(filename string, dirname string) bool {
+	log.Println("FILENAME ", filename, " bytes ", []byte(filename))
 	if dirname == "" {
-		fmt.Println("ERROR!!!   dirname not set")
+		log.Println("ERROR!!!   dirname not set")
 		return false
 	}
 	file, err := os.Create(dirname + filename)
 	if err != nil {
-		fmt.Println("ERROR!!!   Unable to create file")
-		fmt.Println(err.Error())
+		log.Println("ERROR!!!   Unable to create file")
+		log.Println(err.Error())
 		return false
 	}
-	fmt.Println(filename + " created")
+	log.Println(filename + " created")
 	defer file.Close()
 	return true
 }
 
 func AddDataToFile(filename string, body []byte, dirname string) bool {
 	if dirname == "" {
-		fmt.Println("ERROR!!!   dirname not set")
+		log.Println("ERROR!!!   dirname not set")
 		return false
 	}
 	file, err := os.OpenFile(dirname+filename, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println("ERROR!!!   Unable to open file")
-		fmt.Println(err.Error())
+		log.Println("ERROR!!!   Unable to open file")
+		log.Println(err.Error())
 		return false
 	}
 	defer file.Close()
 	_, err = file.Write(body)
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Println(err.Error())
 	}
-	//fmt.Println(len(body))
+	//log.Println(len(body))
 	return true
 }
