@@ -294,11 +294,11 @@ func syncSignal(port *conn, mu *sync.Mutex) {
 
 /*------------------------------------------------------------------------------*/
 
-func manageHandler(self *conn, mu *sync.Mutex, mycnf *CNF, cnfname string) {
-	cnf := mycnf
+func manageHandler(self *conn, mu *sync.Mutex, cnf *CNF, cnfname string) {
 	//var stopChan = make(chan struct{}, 1)
 	for command := range self.ManageStream {
 		//log.Println("OK!\t manager init")
+		log.Println("New day, new entry ", cnf)
 		switch command {
 		case "ConnInit":
 			status := connectInitMaster(self, mu)
@@ -441,12 +441,14 @@ func connectInitSlave(self *conn, mu *sync.Mutex, cnf *CNF) {
 				log.Println("Reader Start")
 				for self.ConnStatus == OK {
 					mu.Lock()
-					log.Println("\t+ Mutex slave reader")
+					//log.Println("\t+ Mutex slave reader")
 					val, tp, _ := SyncRead(self, false)
 					//log.Println("val = " + val + ",  tp = " + strconv.Itoa(int(tp)))
 					mu.Unlock()
-					log.Println("\t- Mutex slave reader")
+					//log.Println("\t- Mutex slave reader")
 					if tp == transInitCadr {
+						cnf = getCnf("cnf_slave.json")
+						log.Println(cnf)
 						transmitDataSlave(self, mu, cnf.FileName)
 					} else if tp == connEnd {
 						connectEndSlave(self, mu, cnf)

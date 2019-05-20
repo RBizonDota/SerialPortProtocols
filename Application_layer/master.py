@@ -71,9 +71,6 @@ class Second(QtWidgets.QWidget):
 
         self.show()
 
-    def closeEvent(self, event):
-        self.sock.close()
-        self.proc.terminate()
     # функция для кнопки Submit во 2 диалоговом окне
     def submit_on_click(self):
         conf["Name"] = self.port_name.text()
@@ -85,7 +82,7 @@ class Second(QtWidgets.QWidget):
     # выбор папки
     def dir_on_click(self):
         dir = QtWidgets.QFileDialog.getExistingDirectory(self, 'Open file', '/home')
-        self.file_dir.setText(str(dir))
+        self.file_dir.setText(str(dir)+"/")
 
     def type1(self):
         msg = {
@@ -124,6 +121,9 @@ class MainWindow(QtWidgets.QWidget):
         t.start()
         self.UI()
         
+    def closeEvent(self, event):
+        self.sock.close()
+        self.proc.terminate()
     def reader(self):
         while True:
             data = self.sock.recv(1024)
